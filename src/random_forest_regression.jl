@@ -40,7 +40,7 @@ function _best_mse_loss{T<:Float64, U<:Real}(y::Vector{T}, x::Vector{U}, domain)
     # Since`x` is sorted, below is an O(n) algorithm for finding the optimal 
     # threshold in `domain`. We iterate through the array and update sum_y_left 
     # and sum_y_right (= sum(y) - sum_y_left) as we go. - @cstjean
-    @inbounds for thresh in domain
+    @inbounds @simd for thresh in domain
         
         # this loop checks which side of the split this x_i is on
         while i <= n && x[i] < thresh
@@ -73,6 +73,62 @@ function _best_mse_loss{T<:Float64, U<:Real}(y::Vector{T}, x::Vector{U}, domain)
     return best_val, best_thresh
 end
 
+
+"""
+Variable name changes from original code 
+  labels     -> y 
+  features   -> x
+  nr         -> n 
+  nf         -> p 
+  i          -> j
+  features_i -> x_j
+  labels_i   -> y_ord
+  domain_i   -> domain_j
+
+"""
+function _split_mse{T<:Float64, U<:Real}(labels::Vector{T}, features::Matrix{U}, nsubfeatures::Int)
+    n, p = size(features)
+
+    best = NO_BEST
+    best_val = -Inf
+
+    if nsubfeatures > 0
+        r = randperm(p)
+        inds = r[1:nsubfeatures]
+    else
+        inds = 1:p
+    end
+
+    for j in inds
+        # Sorting used to be performed only when n <= 100, but doing it
+        # unconditionally improved fitting performance by 20%. It's a bit of a
+        # puzzle. Either it improved type-stability, or perhaps branch
+        # prediction is much better on a sorted sequence.
+        ord = sortperm(features[:, j])
+        x_j = x[ord, j]
+        y_ord = y[ord]
+        
+
+        if n > 100
+            if VERSION >= v"0.4.0-dev"
+                domain_j = quantile(x_j, linspace(0.01, 0.99, 99); sorted=true)
+            else  # sorted=true isn't supported on StatsBase's Julia 0.3 version
+                domain_j = quantile(x_j, linspace(0.01, 0.99, 99))
+            end
+        else
+            domain_j = x_j
+        end
+        
+        value, thresh = _best_mse_loss(y_ord, x_j, domain_j)
+        
+        if value > best_val
+            best_val = value
+            best = (j, thresh)
+        end
+    end
+
+    return best
+end
 
 
 

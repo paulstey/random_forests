@@ -1,5 +1,5 @@
 # Random forests
-using RDatasets
+using RDatasets, Compat
 
 
 const NO_BEST = (0, 0)
@@ -77,6 +77,10 @@ end
 
 
 """
+This function returns a tuple with the column index and the threshold 
+value of the predictor in the matrix X that minimizes MSE. The function 
+assumes complete data in both y and X.
+
 Variable name changes from original code 
   labels     -> y 
   features   -> x
@@ -130,16 +134,90 @@ function _split_mse{T<:Float64, U<:Real}(y::Vector{T}, X::Matrix{U}, nsubfeature
 end
 
 
+function find_na_cols(dat) 
+    cols_with_na = Array{Int, 1}(0)
+    
+    for j in 1:ncol(dat) 
+        if sum(isna(dat[:, j])) ≠ 0
+            push!(cols_with_na, j)
+        end
+    end  
+    return cols_with_na 
+end 
 
 
+# function find_surrogates{T::BitArray}(left_node::T, y::Vector, X::Matrix, nsubfeatures::Int)
+
+
+
+
+immutable Leaf
+    majority::Any
+    values::Vector
+end
+
+@compat immutable Node
+    featid::Integer
+    featval::Any
+
+    # pointers to daughter nodes
+    left::Union{Leaf, Node}
+    right::Union{Leaf, Node}
+end
+
+@compat typealias LeafOrNode Union{Leaf, Node}
+
+
+
+apply_tree(leaf::Leaf, feature::Vector) = leaf.majority
+
+function apply_tree(tree::Node, features::Vector)
+    if tree.featval == nothing                  # when would this be true???
+        return apply_tree(tree.left, features)
+    elseif features[tree.featid] < tree.featval
+        return apply_tree(tree.left, features)
+    else
+        return apply_tree(tree.right, features)
+    end
+end
+
+function apply_tree(tree::LeafOrNode, features::Matrix)
+    N = size(features,1)
+    predictions = Array(Any,N)
+    for i in 1:N
+        predictions[i] = apply_tree(tree, squeeze(features[i,:],1))
+    end
+    if typeof(predictions[1]) <: Float64
+        return float(predictions)
+    else
+        return predictions
+    end
+end
+
+function build_stump{T<:Float64, U<:Real}(y::Vector{T}, X::Matrix{U})
+    S = _split_mse(y, X, 0)
+    
+    if S == NO_BEST
+        return Leaf(mean(y), y)
+    end
+    
+    col_idx, thresh = S
+    split = X[:, col_idx] .< thresh
+    
+    return Node(col_idx, 
+                thresh,
+                Leaf(mean(y[split]), y[split]),
+                Leaf(mean(y[!split]), y[!split]))
+end
 
 
 
 d = dataset("datasets", "airquality")
+d[:row_idx] = 1:nrow(d)
 dc = d[complete_cases(d), :];
 X = convert(Array, dc[:, 2:6]);
 y = convert(Array{Float64,1}, dc[:, 1]);
 
 @time _split_mse(y, X, 0)
 @time _split_mse(y, X, 0)
-
+build_stump(y, X)

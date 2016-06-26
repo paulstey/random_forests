@@ -1,6 +1,8 @@
 # Random forests
 using RDatasets
 
+
+const NO_BEST = (0, 0)
 """ 
 Finds the threshold to split `features` with that minimizes the
 mean-squared-error loss over `labels`.
@@ -84,31 +86,30 @@ Variable name changes from original code
   features_i -> x_j
   labels_i   -> y_ord
   domain_i   -> domain_j
+  inds       -> col_indcs
 
 """
-function _split_mse{T<:Float64, U<:Real}(labels::Vector{T}, features::Matrix{U}, nsubfeatures::Int)
-    n, p = size(features)
-
+function _split_mse{T<:Float64, U<:Real}(y::Vector{T}, X::Matrix{U}, nsubfeatures::Int)
+    n, p = size(X)
     best = NO_BEST
     best_val = -Inf
 
     if nsubfeatures > 0
         r = randperm(p)
-        inds = r[1:nsubfeatures]
+        col_indcs = r[1:nsubfeatures]
     else
-        inds = 1:p
+        col_indcs = 1:p
     end
 
-    for j in inds
+    for j in col_indcs
         # Sorting used to be performed only when n <= 100, but doing it
         # unconditionally improved fitting performance by 20%. It's a bit of a
         # puzzle. Either it improved type-stability, or perhaps branch
         # prediction is much better on a sorted sequence.
-        ord = sortperm(features[:, j])
-        x_j = x[ord, j]
+        ord = sortperm(X[:, j])
+        x_j = X[ord, j]
         y_ord = y[ord]
         
-
         if n > 100
             if VERSION >= v"0.4.0-dev"
                 domain_j = quantile(x_j, linspace(0.01, 0.99, 99); sorted=true)
@@ -116,17 +117,15 @@ function _split_mse{T<:Float64, U<:Real}(labels::Vector{T}, features::Matrix{U},
                 domain_j = quantile(x_j, linspace(0.01, 0.99, 99))
             end
         else
-            domain_j = x_j
+            domain_j = x_j          
         end
-        
         value, thresh = _best_mse_loss(y_ord, x_j, domain_j)
-        
+
         if value > best_val
             best_val = value
             best = (j, thresh)
         end
     end
-
     return best
 end
 
@@ -137,7 +136,10 @@ end
 
 
 d = dataset("datasets", "airquality")
-dc = d[complete_cases(d), :]
-features = convert(Array, dc[:, 2:6]);
-labels = convert(Array, dc[:, 1]);
+dc = d[complete_cases(d), :];
+X = convert(Array, dc[:, 2:6]);
+y = convert(Array{Float64,1}, dc[:, 1]);
+
+@time _split_mse(y, X, 0)
+@time _split_mse(y, X, 0)
 

@@ -3,21 +3,23 @@ using RDatasets, Compat
 
 
 const NO_BEST = (0, 0)
-""" 
+
+
+"""
 Finds the threshold to split `features` with that minimizes the
 mean-squared-error loss over `labels`.
-Returns (best_val, best_thresh), where `best_val` is -MSE 
+Returns (best_val, best_thresh), where `best_val` is -MSE
 
-Variable name changes from original code 
-  labels   -> y 
+Variable name changes from original code
+  labels   -> y
   features -> x
-  nl       -> n_left 
+  nl       -> n_left
   nr       -> n_right
   su       -> sum_y
   su2      -> sum_y2
   s_l      -> sum_y_left
   s2_l     -> sum_y2_left
-  s_r      -> sum_y_right 
+  s_r      -> sum_y_right
   s2_r     -> sum_y2_right
 
 """
@@ -27,23 +29,23 @@ function _best_mse_loss{T<:Float64, U<:Real}(y::Vector{T}, x::Vector{U}, domain)
     n = length(y)
 
     sum_y_left = sum_y2_left = zero(T)            # scale values of 0
-    
+
     sum_y = sum(y)::T                             # scalar sum of all y_i
     sum_y2 = zero(T);                             # scalar value of 0
-    
+
     # get sum of squares
-    for i = 1:n 
-        sum_y2 += y[i]^2 
-    end  
+    for i = 1:n
+        sum_y2 += y[i]^2
+    end
 
     n_left = 0
     i = 1
 
-    # Since`x` is sorted, below is an O(n) algorithm for finding the optimal 
-    # threshold in `domain`. We iterate through the array and update sum_y_left 
+    # Since`x` is sorted, below is an O(n) algorithm for finding the optimal
+    # threshold in `domain`. We iterate through the array and update sum_y_left
     # and sum_y_right (= sum(y) - sum_y_left) as we go. - @cstjean
     @inbounds @simd for thresh in domain
-        
+
         # this loop checks which side of the split this x_i is on
         while i <= n && x[i] < thresh
             sum_y_left += y[i]
@@ -58,13 +60,13 @@ function _best_mse_loss{T<:Float64, U<:Real}(y::Vector{T}, x::Vector{U}, domain)
         # This check is necessary I think because in theory all y could
         # be the same, then either n_left or n_right would be 0. - @cstjean
         if n_right > 0 && n_left > 0
-            
-            # This isn't really squared-error loss. We're computing the sum of variance 
-            # in the daughter nodes times the N for that daughter node. This last point 
-            # is why the two paranthetical terms here look a bit diffent than mere variance. 
+
+            # This isn't really squared-error loss. We're computing the sum of variance
+            # in the daughter nodes times the N for that daughter node. This last point
+            # is why the two paranthetical terms here look a bit diffent than mere variance.
             # We have canceled a constant term N for each term.
             loss = (sum_y2_left - sum_y_left^2/n_left) + (sum_y2_right - sum_y_right^2/n_right)
-            
+
             # update best value and threshold
             if -loss > best_val
                 best_val = -loss
@@ -77,15 +79,15 @@ end
 
 
 """
-This function returns a tuple with the column index and the threshold 
-value of the predictor in the matrix X that minimizes MSE. The function 
+This function returns a tuple with the column index and the threshold
+value of the predictor in the matrix X that minimizes MSE. The function
 assumes complete data in both y and X.
 
-Variable name changes from original code 
-  labels     -> y 
+Variable name changes from original code
+  labels     -> y
   features   -> x
-  nr         -> n 
-  nf         -> p 
+  nr         -> n
+  nf         -> p
   i          -> j
   features_i -> x_j
   labels_i   -> y_ord
@@ -113,7 +115,7 @@ function _split_mse{T<:Float64, U<:Real}(y::Vector{T}, X::Matrix{U}, nsubfeature
         ord = sortperm(X[:, j])
         x_j = X[ord, j]
         y_ord = y[ord]
-        
+
         if n > 100
             if VERSION >= v"0.4.0-dev"
                 domain_j = quantile(x_j, linspace(0.01, 0.99, 99); sorted=true)
@@ -121,7 +123,7 @@ function _split_mse{T<:Float64, U<:Real}(y::Vector{T}, X::Matrix{U}, nsubfeature
                 domain_j = quantile(x_j, linspace(0.01, 0.99, 99))
             end
         else
-            domain_j = x_j          
+            domain_j = x_j
         end
         value, thresh = _best_mse_loss(y_ord, x_j, domain_j)
 
@@ -134,21 +136,95 @@ function _split_mse{T<:Float64, U<:Real}(y::Vector{T}, X::Matrix{U}, nsubfeature
 end
 
 
-function find_na_cols(dat) 
+
+
+function _split_mse_df{T<:Float64}(y::Vector{T}, X::DataFrame, nsubfeatures::Int)
+
+    n, p = size(X)
+    best = NO_BEST
+    best_val = -Inf
+
+    if nsubfeatures > 0
+        r = randperm(p)
+        col_indcs = r[1:nsubfeatures]
+    else
+        col_indcs = 1:p
+    end
+
+    for j in col_indcs
+
+        keep_row = !isna(X[:, j])
+        x_comp = convert(Vector, X[keep_row, j])
+        y_comp = y[keep_row]
+
+        ord = sortperm(x_comp)
+        x_j = x_comp[ord]
+        y_ord = y_comp[ord]
+
+        if n > 100
+            if VERSION >= v"0.4.0-dev"
+                domain_j = quantile(x_j, linspace(0.01, 0.99, 99); sorted=true)
+            else  # sorted=true isn't supported on StatsBase's Julia 0.3 version
+                domain_j = quantile(x_j, linspace(0.01, 0.99, 99))
+            end
+        else
+            domain_j = x_j
+        end
+        value, thresh = _best_mse_loss(y_ord, x_j, domain_j)
+
+        if value > best_val
+            best_val = value
+            best = (j, thresh)
+        end
+    end
+    return best
+end
+
+
+
+d = dataset("datasets", "airquality")
+d[:row_idx] = 1:nrow(d)
+dc = d[complete_cases(d), :];
+X = convert(Array, dc[:, 2:6]);
+y = convert(Array{Float64,1}, dc[:, 1]);
+
+@time _split_mse(y, X, 0)
+
+keep_idx = !isna(d[:,1])
+@time _split_mse_df(convert(Vector{Float64}, d[keep_idx, 1]), d[keep_idx, 2:6], 0)
+
+
+
+
+
+
+
+
+
+
+
+function find_na_cols(dat)
     cols_with_na = Array{Int, 1}(0)
-    
-    for j in 1:ncol(dat) 
+
+    for j in 1:ncol(dat)
         if sum(isna(dat[:, j])) ≠ 0
             push!(cols_with_na, j)
         end
-    end  
-    return cols_with_na 
-end 
+    end
+    return cols_with_na
+end
 
+
+function make_na_indicator(dat)
+    X_hasna = BitArray{2}(nrow(dat), ncol(dat))
+
+    for j in 1:ncol(dat)
+        X_hasna[:, j] = isna(dat[:, j]))
+    end
+    return X_hasna
+end
 
 # function find_surrogates{T::BitArray}(left_node::T, y::Vector, X::Matrix, nsubfeatures::Int)
-
-
 
 
 immutable Leaf
@@ -181,36 +257,66 @@ function apply_tree(tree::Node, features::Vector)
     end
 end
 
-function apply_tree(tree::LeafOrNode, features::Matrix)
-    N = size(features,1)
-    predictions = Array(Any,N)
-    for i in 1:N
-        predictions[i] = apply_tree(tree, squeeze(features[i,:],1))
-    end
-    if typeof(predictions[1]) <: Float64
-        return float(predictions)
-    else
-        return predictions
-    end
-end
+
+# function apply_tree(tree::LeafOrNode, features::Matrix)
+#     n = size(features,1)
+#     predictions = Array(Any, n)
+#     for i in 1:n
+#         predictions[i] = apply_tree(tree, squeeze(features[i,:],1))
+#     end
+#     if typeof(predictions[1]) <: Float64
+#         return float(predictions)
+#     else
+#         return predictions
+#     end
+# end
+
 
 function build_stump{T<:Float64, U<:Real}(y::Vector{T}, X::Matrix{U})
     S = _split_mse(y, X, 0)
-    
+
     if S == NO_BEST
         return Leaf(mean(y), y)
     end
-    
+
     col_idx, thresh = S
     split = X[:, col_idx] .< thresh
-    
-    return Node(col_idx, 
+
+    return Node(col_idx,
                 thresh,
                 Leaf(mean(y[split]), y[split]),
                 Leaf(mean(y[!split]), y[!split]))
 end
 
 
+function build_tree{T<:Float64}(y::Vector{T}, X::DataFrame, row_indcs, maxlabels=5, nsubfeatures=0, maxdepth=-1)
+
+    if maxdepth < -1
+        error("Unexpected value for maxdepth: $(maxdepth) (expected: maxdepth >= 0, or maxdepth = -1 for infinite depth)")
+    end
+
+    if length(y) <= maxlabels || maxdepth == 0            # stopping rules
+        return Leaf(mean(y), y)
+    end
+
+    S = _split_mse(y, X, nsubfeatures)
+
+    if S == NO_BEST
+        return Leaf(mean(y), y)
+    end
+
+    col_idx, thresh = S
+
+    cols_with_na = find_na_cols(X)
+    if col_idx in cols_with_na
+
+
+    split = X[:, col_idx] .< thresh
+    return Node(col_idx,
+                thresh,
+                build_tree(y[split], X[split,:], row_indcs[split], maxlabels, nsubfeatures, max(maxdepth-1, -1)),
+                build_tree(y[!split], X[!split,:], row_indcs[!split], maxlabels, nsubfeatures, max(maxdepth-1, -1)))
+end
 
 d = dataset("datasets", "airquality")
 d[:row_idx] = 1:nrow(d)

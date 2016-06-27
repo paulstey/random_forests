@@ -171,12 +171,12 @@ function _split_mse_df{T<:Float64}(y::Vector{T}, X::DataFrame, nsubfeatures::Int
     for j in col_indcs
 
         keep_row = !isna(X[:, j])
-        x_comp = convert(Vector, X[keep_row, j])
-        y_comp = y[keep_row]
+        x_obs = convert(Vector, X[keep_row, j])
+        y_obs = y[keep_row]
 
-        ord = sortperm(x_comp)
-        x_j = x_comp[ord]
-        y_ord = y_comp[ord]
+        ord = sortperm(x_obs)
+        x_j = x_obs[ord]
+        y_ord = y_obs[ord]
 
         if n > 100
             if VERSION >= v"0.4.0-dev"
@@ -322,6 +322,21 @@ end
 
 
 
+"""
+Given a vector `v` this function returns a boolean vector
+indicating whether or not each `v[i]` is in the vector `ref`
+"""
+function are_in(v, ref::Vector{Int})
+    n = length(v)
+    found = falses(n)
+    for i = 1:n
+        if findfirst(ref, v[i]) ≠ 0
+            found[i] = true
+        end
+    end
+    return found
+end
+
 
 
 function build_tree_df{T<:Float64}(y::Vector{T}, X::DataFrame, row_indcs, maxlabels=5, nsubfeatures=0, maxdepth=-1)
@@ -330,7 +345,7 @@ function build_tree_df{T<:Float64}(y::Vector{T}, X::DataFrame, row_indcs, maxlab
         error("Unexpected value for maxdepth: $(maxdepth) (expected: maxdepth >= 0, or maxdepth = -1 for infinite depth)")
     end
 
-    if length(y) <= maxlabels || maxdepth == 0            # stopping rules
+    if length(y) <= maxlabels || maxdepth == 0          # stopping rules
         return Leaf(mean(y), y)
     end
 
@@ -342,17 +357,25 @@ function build_tree_df{T<:Float64}(y::Vector{T}, X::DataFrame, row_indcs, maxlab
 
     col_idx, thresh = S
 
-    cols_with_na = find_na_cols(X)
+    cols_with_na = find_na_cols(X)                      # needed for each recursive step since rows of X change
 
     if col_idx in cols_with_na
         na_rows = isna(X[:, col_idx])
-        split_comp = X[!na_rows, col_idx] .< thresh
-        
+        split_obs = X[!na_rows, col_idx] .< thresh
 
-        row_indcs_subset = row_indcs[!na_rows]
+        row_indcs_obs = row_indcs[!na_rows]
+        col_indcs = deleteat!(collect(1:ncol(X)), col_idx)
+        X_2 = X[:, col_indcs]
+
+        # Here we need a function that splits so as to optimize agreement
+        # with the `split_obs` result for each `row_indcs_obs`.
 
 
-    split = X[:, col_idx] .< thresh
+
+    else
+        split = X[:, col_idx] .< thresh
+    end
+
     return Node(col_idx,
                 thresh,
                 build_tree_df(y[split], X[split,:], row_indcs[split], maxlabels, nsubfeatures, max(maxdepth-1, -1)),

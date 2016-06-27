@@ -4,6 +4,23 @@ using RDatasets, Compat
 
 const NO_BEST = (0, 0)
 
+immutable Leaf
+    majority::Any
+    values::Vector
+end
+
+@compat immutable Node
+    featid::Integer
+    featval::Any
+
+    # pointers to daughter nodes
+    left::Union{Leaf, Node}
+    right::Union{Leaf, Node}
+end
+
+@compat typealias LeafOrNode Union{Leaf, Node}
+
+
 
 """
 Finds the threshold to split `features` with that minimizes the
@@ -219,29 +236,12 @@ function make_na_indicator(dat)
     X_hasna = BitArray{2}(nrow(dat), ncol(dat))
 
     for j in 1:ncol(dat)
-        X_hasna[:, j] = isna(dat[:, j]))
+        X_hasna[:, j] = isna(dat[:, j])
     end
     return X_hasna
 end
 
 # function find_surrogates{T::BitArray}(left_node::T, y::Vector, X::Matrix, nsubfeatures::Int)
-
-
-immutable Leaf
-    majority::Any
-    values::Vector
-end
-
-@compat immutable Node
-    featid::Integer
-    featval::Any
-
-    # pointers to daughter nodes
-    left::Union{Leaf, Node}
-    right::Union{Leaf, Node}
-end
-
-@compat typealias LeafOrNode Union{Leaf, Node}
 
 
 
@@ -289,6 +289,12 @@ function build_stump{T<:Float64, U<:Real}(y::Vector{T}, X::Matrix{U})
 end
 
 
+
+
+
+
+
+
 function build_tree{T<:Float64}(y::Vector{T}, X::DataFrame, row_indcs, maxlabels=5, nsubfeatures=0, maxdepth=-1)
 
     if maxdepth < -1
@@ -307,15 +313,50 @@ function build_tree{T<:Float64}(y::Vector{T}, X::DataFrame, row_indcs, maxlabels
 
     col_idx, thresh = S
 
-    cols_with_na = find_na_cols(X)
-    if col_idx in cols_with_na
-
-
     split = X[:, col_idx] .< thresh
     return Node(col_idx,
                 thresh,
                 build_tree(y[split], X[split,:], row_indcs[split], maxlabels, nsubfeatures, max(maxdepth-1, -1)),
                 build_tree(y[!split], X[!split,:], row_indcs[!split], maxlabels, nsubfeatures, max(maxdepth-1, -1)))
+end
+
+
+
+
+
+function build_tree_df{T<:Float64}(y::Vector{T}, X::DataFrame, row_indcs, maxlabels=5, nsubfeatures=0, maxdepth=-1)
+
+    if maxdepth < -1
+        error("Unexpected value for maxdepth: $(maxdepth) (expected: maxdepth >= 0, or maxdepth = -1 for infinite depth)")
+    end
+
+    if length(y) <= maxlabels || maxdepth == 0            # stopping rules
+        return Leaf(mean(y), y)
+    end
+
+    S = _split_mse_df(y, X, nsubfeatures)
+
+    if S == NO_BEST
+        return Leaf(mean(y), y)
+    end
+
+    col_idx, thresh = S
+
+    cols_with_na = find_na_cols(X)
+
+    if col_idx in cols_with_na
+        na_rows = isna(X[:, col_idx])
+        split_comp = X[!na_rows, col_idx] .< thresh
+        
+
+        row_indcs_subset = row_indcs[!na_rows]
+
+
+    split = X[:, col_idx] .< thresh
+    return Node(col_idx,
+                thresh,
+                build_tree_df(y[split], X[split,:], row_indcs[split], maxlabels, nsubfeatures, max(maxdepth-1, -1)),
+                build_tree_df(y[!split], X[!split,:], row_indcs[!split], maxlabels, nsubfeatures, max(maxdepth-1, -1)))
 end
 
 d = dataset("datasets", "airquality")

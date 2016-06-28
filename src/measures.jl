@@ -43,9 +43,9 @@ end
 
 """
 This was formerly called neg_z1_loss() in Ben's original DecisionTree code,
-and the variable `y` was formerlly called `labels`.
+and the variable `y` was formerlly called `labels`
 """
-function _classifcation_error_loss{T<:Real}(y::Vector, weights::Vector{T})
+function _classifcation_error_loss(y::Vector, weights::Vector)
     missmatches = y .!= majority_vote(y)
     loss = sum(weights[missmatches])
     return -loss

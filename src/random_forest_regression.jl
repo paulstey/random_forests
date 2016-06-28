@@ -1,6 +1,7 @@
 # Random forests
 using RDatasets, Compat
 
+include("measures.jl")
 
 const NO_BEST = (0, 0)
 
@@ -156,28 +157,22 @@ end
 
 
 function _split_mse_df{T<:Float64}(y::Vector{T}, X::DataFrame, nsubfeatures::Int)
-
     n, p = size(X)
     best = NO_BEST
     best_val = -Inf
-
     if nsubfeatures > 0
         r = randperm(p)
         col_indcs = r[1:nsubfeatures]
     else
         col_indcs = 1:p
     end
-
     for j in col_indcs
-
         keep_row = !isna(X[:, j])
         x_obs = convert(Vector, X[keep_row, j])
         y_obs = y[keep_row]
-
         ord = sortperm(x_obs)
         x_j = x_obs[ord]
         y_ord = y_obs[ord]
-
         if n > 100
             if VERSION >= v"0.4.0-dev"
                 domain_j = quantile(x_j, linspace(0.01, 0.99, 99); sorted=true)
@@ -188,7 +183,6 @@ function _split_mse_df{T<:Float64}(y::Vector{T}, X::DataFrame, nsubfeatures::Int
             domain_j = x_j
         end
         value, thresh = _best_mse_loss(y_ord, x_j, domain_j)
-
         if value > best_val
             best_val = value
             best = (j, thresh)
@@ -295,33 +289,6 @@ end
 
 
 
-function build_tree{T<:Float64}(y::Vector{T}, X::DataFrame, row_indcs, maxlabels=5, nsubfeatures=0, maxdepth=-1)
-
-    if maxdepth < -1
-        error("Unexpected value for maxdepth: $(maxdepth) (expected: maxdepth >= 0, or maxdepth = -1 for infinite depth)")
-    end
-
-    if length(y) <= maxlabels || maxdepth == 0            # stopping rules
-        return Leaf(mean(y), y)
-    end
-
-    S = _split_mse(y, X, nsubfeatures)
-
-    if S == NO_BEST
-        return Leaf(mean(y), y)
-    end
-
-    col_idx, thresh = S
-
-    split = X[:, col_idx] .< thresh
-    return Node(col_idx,
-                thresh,
-                build_tree(y[split], X[split,:], row_indcs[split], maxlabels, nsubfeatures, max(maxdepth-1, -1)),
-                build_tree(y[!split], X[!split,:], row_indcs[!split], maxlabels, nsubfeatures, max(maxdepth-1, -1)))
-end
-
-
-
 """
 Given a vector `v` this function returns a boolean vector
 indicating whether or not each `v[i]` is in the vector `ref`
@@ -391,3 +358,56 @@ y = convert(Array{Float64,1}, dc[:, 1]);
 @time _split_mse(y, X, 0)
 @time _split_mse(y, X, 0)
 build_stump(y, X)
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+# Spare parts
+# function build_tree{T<:Float64}(y::Vector{T}, X::DataFrame, row_indcs, maxlabels=5, nsubfeatures=0, maxdepth=-1)
+#
+#     if maxdepth < -1
+#         error("Unexpected value for maxdepth: $(maxdepth) (expected: maxdepth >= 0, or maxdepth = -1 for infinite depth)")
+#     end
+#
+#     if length(y) <= maxlabels || maxdepth == 0            # stopping rules
+#         return Leaf(mean(y), y)
+#     end
+#
+#     S = _split_mse(y, X, nsubfeatures)
+#
+#     if S == NO_BEST
+#         return Leaf(mean(y), y)
+#     end
+#
+#     col_idx, thresh = S
+#
+#     split = X[:, col_idx] .< thresh
+#     return Node(col_idx,
+#                 thresh,
+#                 build_tree(y[split], X[split,:], row_indcs[split], maxlabels, nsubfeatures, max(maxdepth-1, -1)),
+#                 build_tree(y[!split], X[!split,:], row_indcs[!split], maxlabels, nsubfeatures, max(maxdepth-1, -1)))
+# end

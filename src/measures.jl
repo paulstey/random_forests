@@ -21,7 +21,7 @@ _hist{T}(y::Vector{T}, region::UnitRange{Int} = 1:endof(y)) = _hist_add!(Dict{T,
 
 
 """
-Given the vector y, this simply returns the value that 
+Given the vector y, this simply returns the value that
 appears most frequently in y.
 """
 function majority_vote(y::Vector)
@@ -38,4 +38,15 @@ function majority_vote(y::Vector)
         end
     end
     return top_vote
+end
+
+
+"""
+This was formerly called neg_z1_loss() in Ben's original DecisionTree code,
+and the variable `y` was formerlly called `labels`.
+"""
+function _classifcation_error_loss{T<:Real}(y::Vector, weights::Vector{T})
+    missmatches = y .!= majority_vote(y)
+    loss = sum(weights[missmatches])
+    return -loss
 end

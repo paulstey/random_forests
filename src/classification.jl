@@ -1,8 +1,10 @@
+using Distributions
 
-
-function _split_classifcation_error_loss(y::Vector, X::DataFrame, column_indcs::Vector{Int}, weights::Vector)
+function _split_classifcation_error_loss(y::Vector, X::DataFrame, obs_row_indcs::Vector{Int}, column_indcs::Vector{Int}, weights::Vector)
     best = NO_BEST
     best_val = -Inf
+    X = X[obs_row_indcs, :]
+    y = y[obs_row_indcs]
 
     for j in column_indcs
         keep_row = !isna(X[:, j])                # use only non-NA values
@@ -17,10 +19,8 @@ function _split_classifcation_error_loss(y::Vector, X::DataFrame, column_indcs::
         end
 
         for thresh in domain_j[2:end]
-
             cur_split = x_obs .< thresh
             value = _classifcation_error_loss(y[cur_split], wgts_obs[cur_split]) + _classifcation_error_loss(y[!cur_split], wgts_obs[!cur_split])
-
             if value > best_val
                 best_val = value
                 best = (j, thresh)
@@ -34,9 +34,12 @@ end
 
 # This method is dispatched when weights are omitted. This
 # allows us to compute the loss function 5x faster
-function _split_classifcation_error_loss(y::Vector, X::DataFrame, column_indcs::Vector{Int})
+function _split_classifcation_error_loss(y::Vector, X::DataFrame, obs_row_indcs::Vector{Int}, column_indcs::Vector{Int})
     best = NO_BEST
     best_val = -Inf
+    X = X[obs_row_indcs, :]
+    y = y[obs_row_indcs]
+
 
     for j in column_indcs
         keep_row = !isna(X[:, j])                # use only non-NA values
@@ -50,10 +53,8 @@ function _split_classifcation_error_loss(y::Vector, X::DataFrame, column_indcs::
         end
 
         for thresh in domain_j[2:end]
-
             cur_split = x_obs .< thresh
             value = _classifcation_error_loss(y[cur_split]) + _classifcation_error_loss(y[!cur_split])
-
             if value > best_val
                 best_val = value
                 best = (j, thresh)
@@ -70,10 +71,28 @@ X = DataFrame(randn(n, p));
 y = rand([true, false], n);
 wgt = ones(Int, n);
 
-@time _split_classifcation_error_loss(y, X, collect(1:p), wgt)
+@time _split_classifcation_error_loss(y, X, collect(1:n), collect(1:p), wgt)
 
 
 
 
-@time surrogate_splits(y, X, collect(1:p), 5, wgt)
+@time surrogate_splits(y, X, collect(1:n), collect(1:p), 5, wgt)
+
+
+function add_missing(dat::DataFrame, pr)
+    d = Bernoulli(pr)
+    X = copy(dat)
+    n, p = size(X)
+    for j = 1:p
+        X[:, j] = convert(DataArray{Any, 1}, X[:, j])
+        for i = 1:n
+            if rand(d) == 1
+                X[i, j] = NA
+            end
+        end
+    end
+    return X
+end
+
+
 #

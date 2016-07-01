@@ -13,8 +13,7 @@ end
 @compat immutable Node
     col_idx::Integer
     split_value::Any
-
-    # surrogates::Array{Tuple{Int, Any}, 1}                # This holds our surrogate vars
+    surrogates::Array{Tuple{Int, Any}, 1}                # This holds our surrogate vars
 
     # pointers to daughter nodes
     left::Union{Leaf, Node}
@@ -174,7 +173,7 @@ function _split_mse_df{T<:Float64}(y::Vector{T}, X::DataFrame, nsubfeatures::Int
         y_obs = y[keep_row]
 
         ord = sortperm(x_obs)
-        x_j = x_obs[ord]
+        x_j = convert(Array{typeof(x_obs[1])}, x_obs[ord])
         y_ord = y_obs[ord]
 
         if n > 100
@@ -197,17 +196,16 @@ end
 
 
 
-d = dataset("datasets", "airquality")
-d[:row_idx] = 1:nrow(d)
-dc = d[complete_cases(d), :];
-X = convert(Array, dc[:, 2:6]);
-y = convert(Array{Float64,1}, dc[:, 1]);
-
-@time _split_mse(y, X, 0)
-
-keep_idx = !isna(d[:,1])
-@time _split_mse_df(convert(Vector{Float64}, d[keep_idx, 1]), d[keep_idx, 2:6], 0)
-
+# d = dataset("datasets", "airquality")
+# d[:row_idx] = 1:nrow(d)
+# dc = d[complete_cases(d), :];
+# X = convert(Array, dc[:, 2:6]);
+# y = convert(Array{Float64,1}, dc[:, 1]);
+#
+# @time _split_mse(y, X, 0)
+#
+# keep_idx = !isna(d[:,1])
+# @time _split_mse_df(convert(Vector{Float64}, d[keep_idx, 1]), d[keep_idx, 2:6], 0)
 
 
 
@@ -279,27 +277,6 @@ end
 
 
 
-
-
-
-
-
-"""
-Given a vector `v` this function returns a boolean vector
-indicating whether or not each `v[i]` is in the vector `ref`
-"""
-function are_in(v, ref::Vector{Int})
-    n = length(v)
-    found = falses(n)
-    for i = 1:n
-        if findfirst(ref, v[i]) ≠ 0
-            found[i] = true
-        end
-    end
-    return found
-end
-
-
 function surrogate_splits(y_obs_split::Vector, X::DataFrame, col_indcs::Vector{Int}, max_surrogates::Int, weights::Vector)
     surr = Array{Tuple}(max_surrogates)
     p = ncol(X)
@@ -314,13 +291,13 @@ end
 
 # This method is dispatched when weights are omitted. This
 # allows us to compute the loss function 5x faster
-function surrogate_splits(y_obs_split::Vector, X::DataFrame, col_indcs::Vector{Int}, max_surrogates::Int)
+function surrogate_splits(y_obs_split::Vector, X::DataFrame, row_indcs::Vector{Int}, col_indcs::Vector{Int}, max_surrogates::Int)
     surr = Array{Tuple}(max_surrogates)
     p = ncol(X)
     n_surr = p - 1 < max_surrogates ? p - 1: max_surrogates
 
     for i = 1:n_surr
-        surr[i] = _split_classifcation_error_loss(y_obs_split, X, col_indcs)
+        surr[i] = _split_classifcation_error_loss(y_obs_split, X, row_indcs, col_indcs)
         col_indcs = setdiff(col_indcs, surr[i][1])
     end
     return surr
@@ -329,8 +306,8 @@ end
 
 
 
-function build_tree_df{T<:Float64}(y::Vector{T}, X::DataFrame, row_indcs, maxlabels=5, nsubfeatures=0, maxdepth=-1)
-
+function build_tree_df{T<:Float64}(y::Vector{T}, X::DataFrame, row_indcs, maxlabels=5, nsubfeatures=0, maxdepth=-1, max_surrogates=5)
+    n = size(X, 1)
     if maxdepth < -1
         error("Unexpected value for maxdepth: $(maxdepth) (expected: maxdepth >= 0, or maxdepth = -1 for infinite depth)")
     end
@@ -339,27 +316,31 @@ function build_tree_df{T<:Float64}(y::Vector{T}, X::DataFrame, row_indcs, maxlab
         return Leaf(mean(y), y)
     end
 
-    S = _split_mse_df(y, X, nsubfeatures)
+    S = _split_mse_df(y, X, nsubfeatures)               # get [complete data] optimal split point
 
     if S == NO_BEST
         return Leaf(mean(y), y)
     end
 
     col_idx, thresh = S
-
-    cols_with_na = find_na_cols(X)                      # needed for each recursive step since rows of X change
-
+    if max_surrogates ≠ 0
+        cols_with_na = find_na_cols(X)                  # needed for all recursive steps since rows of X change
+    end
     if col_idx in cols_with_na
         na_rows = isna(X[:, col_idx])
-        split_obs = X[!na_rows, col_idx] .< thresh
+        split_with_na = Array{Any, 1}(n)
 
-        row_indcs_obs = row_indcs[!na_rows]
+        for i = 1:n
+            split_with_na[i] = isna(X[i, col_idx]) ? NA : X[i, col_idx] < thresh)
+        end
+
+        row_indcs = row_indcs[!na_rows]
         col_indcs = deleteat!(collect(1:ncol(X)), col_idx)
         X_2 = X[:, col_indcs]
 
         # Here we need a function that splits so as to optimize agreement
-        # with the `split_obs` result for each `row_indcs_obs`.
-
+        # with the `split_with_na` result for each observed `row_indcs`.
+        surrogate_vars = surrogate_splits(split_with_na, X_2, row_indcs, col_indcs, 5)
 
 
     else
@@ -368,23 +349,17 @@ function build_tree_df{T<:Float64}(y::Vector{T}, X::DataFrame, row_indcs, maxlab
 
     return Node(col_idx,
                 thresh,
+                surrogate_vars,
                 build_tree_df(y[split], X[split,:], row_indcs[split], maxlabels, nsubfeatures, max(maxdepth-1, -1)),
                 build_tree_df(y[!split], X[!split,:], row_indcs[!split], maxlabels, nsubfeatures, max(maxdepth-1, -1)))
 end
 
-d = dataset("datasets", "airquality")
-d[:row_idx] = 1:nrow(d)
-dc = d[complete_cases(d), :];
-X = convert(Array, dc[:, 2:6]);
-y = convert(Array{Float64,1}, dc[:, 1]);
-
-@time _split_mse(y, X, 0)
-@time _split_mse(y, X, 0)
-
-
-build_stump(y, X)
-
-
+n = 10
+p = 3
+X = DataFrame(randn(n, p));
+y = randn(n);
+X_mis = add_missing(X, 0.3)
+build_tree_df(y, X_mis, collect(1:n))
 
 
 

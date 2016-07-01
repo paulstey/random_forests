@@ -11,8 +11,10 @@ immutable Leaf
 end
 
 @compat immutable Node
-    featid::Integer
-    featval::Any
+    col_idx::Integer
+    split_value::Any
+
+    # surrogates::Array{Tuple{Int, Any}, 1}                # This holds our surrogate vars
 
     # pointers to daughter nodes
     left::Union{Leaf, Node}
@@ -170,9 +172,11 @@ function _split_mse_df{T<:Float64}(y::Vector{T}, X::DataFrame, nsubfeatures::Int
         keep_row = !isna(X[:, j])
         x_obs = convert(Vector, X[keep_row, j])
         y_obs = y[keep_row]
+
         ord = sortperm(x_obs)
         x_j = x_obs[ord]
         y_ord = y_obs[ord]
+
         if n > 100
             if VERSION >= v"0.4.0-dev"
                 domain_j = quantile(x_j, linspace(0.01, 0.99, 99); sorted=true)
@@ -226,15 +230,6 @@ function find_na_cols(dat)
 end
 
 
-function make_na_indicator(dat)
-    X_hasna = BitArray{2}(nrow(dat), ncol(dat))
-
-    for j in 1:ncol(dat)
-        X_hasna[:, j] = isna(dat[:, j])
-    end
-    return X_hasna
-end
-
 # function find_surrogates{T::BitArray}(left_node::T, y::Vector, X::Matrix, nsubfeatures::Int)
 
 
@@ -242,9 +237,9 @@ end
 apply_tree(leaf::Leaf, feature::Vector) = leaf.majority
 
 function apply_tree(tree::Node, features::Vector)
-    if tree.featval == nothing                  # when would this be true???
+    if tree.split_value == nothing                  # when would this be true???
         return apply_tree(tree.left, features)
-    elseif features[tree.featid] < tree.featval
+    elseif features[tree.col_idx] < tree.split_value
         return apply_tree(tree.left, features)
     else
         return apply_tree(tree.right, features)
@@ -305,6 +300,34 @@ function are_in(v, ref::Vector{Int})
 end
 
 
+function surrogate_splits(y_obs_split::Vector, X::DataFrame, col_indcs::Vector{Int}, max_surrogates::Int, weights::Vector)
+    surr = Array{Tuple}(max_surrogates)
+    p = ncol(X)
+    n_surr = p - 1 < max_surrogates ? p - 1: max_surrogates
+
+    for i = 1:n_surr
+        surr[i] = _split_classifcation_error_loss(y_obs_split, X, col_indcs, weights)
+        col_indcs = setdiff(col_indcs, surr[i][1])
+    end
+    return surr
+end
+
+# This method is dispatched when weights are omitted. This
+# allows us to compute the loss function 5x faster
+function surrogate_splits(y_obs_split::Vector, X::DataFrame, col_indcs::Vector{Int}, max_surrogates::Int)
+    surr = Array{Tuple}(max_surrogates)
+    p = ncol(X)
+    n_surr = p - 1 < max_surrogates ? p - 1: max_surrogates
+
+    for i = 1:n_surr
+        surr[i] = _split_classifcation_error_loss(y_obs_split, X, col_indcs)
+        col_indcs = setdiff(col_indcs, surr[i][1])
+    end
+    return surr
+end
+
+
+
 
 function build_tree_df{T<:Float64}(y::Vector{T}, X::DataFrame, row_indcs, maxlabels=5, nsubfeatures=0, maxdepth=-1)
 
@@ -357,6 +380,8 @@ y = convert(Array{Float64,1}, dc[:, 1]);
 
 @time _split_mse(y, X, 0)
 @time _split_mse(y, X, 0)
+
+
 build_stump(y, X)
 
 
@@ -387,6 +412,17 @@ build_stump(y, X)
 
 
 # Spare parts
+
+
+# function make_na_indicator(dat)
+#     X_hasna = BitArray{2}(nrow(dat), ncol(dat))
+#
+#     for j in 1:ncol(dat)
+#         X_hasna[:, j] = isna(dat[:, j])
+#     end
+#     return X_hasna
+# end
+
 # function build_tree{T<:Float64}(y::Vector{T}, X::DataFrame, row_indcs, maxlabels=5, nsubfeatures=0, maxdepth=-1)
 #
 #     if maxdepth < -1

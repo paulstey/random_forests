@@ -40,6 +40,9 @@ function majority_vote(y::Vector)
     return top_vote
 end
 
+# n = 1000
+# y = rand([true, false], n);
+# @time majority_vote(y)
 
 """
 This was formerly called neg_z1_loss() in Ben's original DecisionTree code,
@@ -50,3 +53,17 @@ function _classifcation_error_loss(y::Vector, weights::Vector)
     loss = sum(weights[missmatches])
     return -loss
 end
+
+# This method is dispatched when weights are omitted. This
+# allows us to compute the loss function 5x faster
+function _classifcation_error_loss(y::Vector{Bool})
+    loss = sum(y)
+    return -loss
+end
+
+
+n = 1000
+y = rand([true, false], n);
+wgt = repeat([1], inner = n);
+
+@time _classifcation_error_loss(y)

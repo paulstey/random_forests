@@ -6,6 +6,8 @@ using Gallium
 
 include("measures.jl")
 include("classification.jl")
+include("surrogates.jl")
+
 
 const NO_BEST = (0, 0)
 
@@ -281,32 +283,6 @@ end
 
 
 
-function surrogate_splits(y_obs_split::Vector, X::DataFrame, col_indcs::Vector{Int}, max_surrogates::Int, weights::Vector)
-    surr = Array{Tuple}(max_surrogates)
-    p = ncol(X)
-    n_surr = p - 1 < max_surrogates ? p - 1: max_surrogates
-
-    for i = 1:n_surr
-        surr[i] = _split_classifcation_error_loss(y_obs_split, X, col_indcs, weights)
-        col_indcs = setdiff(col_indcs, surr[i][1])
-    end
-    return surr
-end
-
-# This method is dispatched when weights are omitted. This
-# allows us to compute the loss function 5x faster
-function surrogate_splits(y_obs_split::Vector, X::DataFrame, row_indcs::Vector{Int}, col_indcs::Vector{Int}, max_surrogates::Int)
-    surr = Array{Tuple}(max_surrogates)
-    p = ncol(X)
-    n_surr = p - 1 < max_surrogates ? p - 1: max_surrogates
-
-    for i = 1:n_surr
-        surr[i] = _split_classifcation_error_loss(y_obs_split, X, row_indcs, col_indcs)
-        col_indcs = setdiff(col_indcs, surr[i][1])
-    end
-    return surr
-end
-
 
 
 
@@ -340,11 +316,12 @@ function build_tree_df{T<:Float64}(y::Vector{T}, X::DataFrame, row_indcs, maxlab
 
         row_indcs = row_indcs[!na_rows]
         col_indcs = deleteat!(collect(1:ncol(X)), col_idx)
-        X_2 = X[:, col_indcs]
 
         # Here we need a function that splits so as to optimize agreement
         # with the `split_with_na` result for each observed `row_indcs`.
-        surrogate_vars = surrogate_splits(split_with_na, X_2, row_indcs, col_indcs, 5)
+        surrogate_vars = surrogate_splits(split_with_na, X, row_indcs, col_indcs, 5)
+        split = apply_surrogates(split_with_na, X, surrogate_vars)
+
 
 
     else

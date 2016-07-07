@@ -58,9 +58,9 @@ function _classifcation_error_loss(y::Vector)
     return -loss
 end
 
-
-n = 1000
-y = rand([true, false], n);
-wgt = repeat([1], inner = n);
-
-@time _classifcation_error_loss(y)
+#
+# n = 1000
+# y = rand([true, false], n);
+# wgt = repeat([1], inner = n);
+#
+# @time _classifcation_error_loss(y)

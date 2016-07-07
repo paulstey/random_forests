@@ -40,6 +40,8 @@ function _split_classifcation_error_loss(y::Vector, X::DataFrame, obs_row_indcs:
     X = X[obs_row_indcs, :]
     y = y[obs_row_indcs]
 
+    println(size(X))
+    println(column_indcs)
 
     for j in column_indcs
         keep_row = !isna(X[:, j])                # FIX THE BUG HERE!!!

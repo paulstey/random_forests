@@ -1,7 +1,11 @@
 # Random forests
-using RDatasets, Compat
+using RDatasets
+using Compat
+using Distributions
+using Gallium
 
 include("measures.jl")
+include("classification.jl")
 
 const NO_BEST = (0, 0)
 
@@ -13,7 +17,7 @@ end
 @compat immutable Node
     col_idx::Integer
     split_value::Any
-    surrogates::Array{Tuple{Int, Any}, 1}                # This holds our surrogate vars
+    surrogates::Array{Tuple{Int, Real}, 1}                # This holds our surrogate vars
 
     # pointers to daughter nodes
     left::Union{Leaf, Node}
@@ -47,7 +51,7 @@ function _best_mse_loss{T<:Float64, U<:Real}(y::Vector{T}, x::Vector{U}, domain)
     best_thresh = 0.0
     n = length(y)
 
-    sum_y_left = sum_y2_left = zero(T)            # scale values of 0
+    sum_y_left = sum_y2_left = zero(T)            # scalar values of 0
 
     sum_y = sum(y)::T                             # scalar sum of all y_i
     sum_y2 = zero(T);                             # scalar value of 0
@@ -63,7 +67,7 @@ function _best_mse_loss{T<:Float64, U<:Real}(y::Vector{T}, x::Vector{U}, domain)
     # Since`x` is sorted, below is an O(n) algorithm for finding the optimal
     # threshold in `domain`. We iterate through the array and update sum_y_left
     # and sum_y_right (= sum(y) - sum_y_left) as we go. - @cstjean
-    @inbounds @simd for thresh in domain
+    for thresh in domain
 
         # this loop checks which side of the split this x_i is on
         while i <= n && x[i] < thresh
@@ -328,10 +332,10 @@ function build_tree_df{T<:Float64}(y::Vector{T}, X::DataFrame, row_indcs, maxlab
     end
     if col_idx in cols_with_na
         na_rows = isna(X[:, col_idx])
-        split_with_na = Array{Any, 1}(n)
+        split_with_na = Array{Any, 1}(n)                # vector of Bools with some NA values
 
         for i = 1:n
-            split_with_na[i] = isna(X[i, col_idx]) ? NA : X[i, col_idx] < thresh)
+            split_with_na[i] = isna(X[i, col_idx]) ? NA : X[i, col_idx] < thresh
         end
 
         row_indcs = row_indcs[!na_rows]
@@ -360,9 +364,6 @@ X = DataFrame(randn(n, p));
 y = randn(n);
 X_mis = add_missing(X, 0.3)
 build_tree_df(y, X_mis, collect(1:n))
-
-
-
 
 
 

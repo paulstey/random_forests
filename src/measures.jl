@@ -1,7 +1,4 @@
 
-
-
-
 function _hist_add!{T}(counts::Dict{T,Int}, y::Vector{T}, region::UnitRange{Int})
     for i in region
         lbl = y[i]
@@ -56,7 +53,7 @@ end
 
 # This method is dispatched when weights are omitted. This
 # allows us to compute the loss function 5x faster
-function _classifcation_error_loss(y::Vector{Bool})
+function _classifcation_error_loss(y::Vector)
     loss = sum(y)
     return -loss
 end

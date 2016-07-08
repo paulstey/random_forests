@@ -33,14 +33,11 @@ function apply_surrogates(split_with_na::Vector, X::DataFrame, surr::Array{Tuple
     n = length(split_with_na)
     display(surr)
     col_indcs = [x[1] for x in surr]
-    warn("this is it")
-
     col_thresh = [x[2] for x in surr]
 
     split = falses(n)
 
     for i = 1:n
-        warn("made it here at iteration $i")
         if isna(split_with_na[i])
             for (idx, j) in enumerate(col_indcs)
                 if !isna(X[i, j])
@@ -48,8 +45,9 @@ function apply_surrogates(split_with_na::Vector, X::DataFrame, surr::Array{Tuple
                     break
                 end
             end
+        else
+            split[i] = split_with_na[i]
         end
-        split[i] = split_with_na[i]
     end
     return split
 end

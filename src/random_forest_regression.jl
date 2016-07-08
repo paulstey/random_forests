@@ -288,6 +288,7 @@ end
 
 function build_tree_df{T<:Float64}(y::Vector{T}, X::DataFrame, row_indcs, maxlabels=5, nsubfeatures=0, maxdepth=-1, max_surrogates=5)
     n = size(X, 1)
+    warn("There are $n rows")
     if maxdepth < -1
         error("Unexpected value for maxdepth: $(maxdepth) (expected: maxdepth >= 0, or maxdepth = -1 for infinite depth)")
     end
@@ -314,16 +315,18 @@ function build_tree_df{T<:Float64}(y::Vector{T}, X::DataFrame, row_indcs, maxlab
             split_with_na[i] = isna(X[i, col_idx]) ? NA : X[i, col_idx] < thresh
         end
 
-        row_indcs = row_indcs[!na_rows]
+        row_indcs2 = row_indcs[!na_rows]
         col_indcs = deleteat!(collect(1:ncol(X)), col_idx)
 
         # Here we need a function that splits so as to optimize agreement
-        # with the `split_with_na` result for each observed `row_indcs`.
-        surrogate_vars = surrogate_splits(split_with_na, X, row_indcs, col_indcs, 5)
+        # with the `split_with_na` result for each observed `row_indcs2`.
+        surrogate_vars = surrogate_splits(split_with_na, X, row_indcs2, col_indcs, 5)
         split = apply_surrogates(split_with_na, X, surrogate_vars)
 
-
-
+        display(split)
+        display(X)
+        display(y)
+        display(row_indcs)
     else
         split = X[:, col_idx] .< thresh
     end

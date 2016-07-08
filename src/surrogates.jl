@@ -27,11 +27,13 @@ function surrogate_splits(y_obs_split::Vector, X::DataFrame, row_indcs::Vector{I
     return surr
 end
 
+
+
+
 # For now, this function doesn't solve the edge case in which
 # a given record has missing data on all surrogates.
 function apply_surrogates(split_with_na::Vector, X::DataFrame, surr::Array{Tuple, 1})
     n = length(split_with_na)
-    display(surr)
     col_indcs = [x[1] for x in surr]
     col_thresh = [x[2] for x in surr]
 

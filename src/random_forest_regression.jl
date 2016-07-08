@@ -286,13 +286,12 @@ end
 
 
 
-function build_tree_df{T<:Float64}(y::Vector{T}, X::DataFrame, row_indcs, maxlabels=5, nsubfeatures=0, maxdepth=-1, max_surrogates=5)
+function build_tree_df{T<:Float64}(y::Vector{T}, X::DataFrame, maxlabels=5, nsubfeatures=0, maxdepth=-1, max_surrogates=5)
     n = size(X, 1)
     warn("There are $n rows")
     if maxdepth < -1
         error("Unexpected value for maxdepth: $(maxdepth) (expected: maxdepth >= 0, or maxdepth = -1 for infinite depth)")
     end
-
     if length(y) <= maxlabels || maxdepth == 0          # stopping rules
         return Leaf(mean(y), y)
     end
@@ -304,9 +303,11 @@ function build_tree_df{T<:Float64}(y::Vector{T}, X::DataFrame, row_indcs, maxlab
     end
 
     col_idx, thresh = S
+
     if max_surrogates ≠ 0
         cols_with_na = find_na_cols(X)                  # needed for all recursive steps since rows of X change
     end
+
     if col_idx in cols_with_na
         na_rows = isna(X[:, col_idx])
         split_with_na = Array{Any, 1}(n)                # vector of Bools with some NA values
@@ -314,13 +315,12 @@ function build_tree_df{T<:Float64}(y::Vector{T}, X::DataFrame, row_indcs, maxlab
         for i = 1:n
             split_with_na[i] = isna(X[i, col_idx]) ? NA : X[i, col_idx] < thresh
         end
-
-        row_indcs2 = row_indcs[!na_rows]
+        row_indcs = collect(1:n)[!na_rows]
         col_indcs = deleteat!(collect(1:ncol(X)), col_idx)
 
         # Here we need a function that splits so as to optimize agreement
-        # with the `split_with_na` result for each observed `row_indcs2`.
-        surrogate_vars = surrogate_splits(split_with_na, X, row_indcs2, col_indcs, 5)
+        # with the `split_with_na` result for each observed `row_indcs`.
+        surrogate_vars = surrogate_splits(split_with_na, X, row_indcs, col_indcs, 5)
         split = apply_surrogates(split_with_na, X, surrogate_vars)
 
         display(split)
@@ -334,8 +334,8 @@ function build_tree_df{T<:Float64}(y::Vector{T}, X::DataFrame, row_indcs, maxlab
     return Node(col_idx,
                 thresh,
                 surrogate_vars,
-                build_tree_df(y[split], X[split,:], row_indcs[split], maxlabels, nsubfeatures, max(maxdepth-1, -1)),
-                build_tree_df(y[!split], X[!split,:], row_indcs[!split], maxlabels, nsubfeatures, max(maxdepth-1, -1)))
+                build_tree_df(y[split], X[split,:], maxlabels, nsubfeatures, max(maxdepth-1, -1)),
+                build_tree_df(y[!split], X[!split,:], maxlabels, nsubfeatures, max(maxdepth-1, -1)))
 end
 
 n = 10
@@ -343,7 +343,7 @@ p = 3
 X = DataFrame(randn(n, p));
 y = randn(n);
 X_mis = add_missing(X, 0.3)
-build_tree_df(y, X_mis, collect(1:n))
+build_tree_df(y, X_mis)
 
 
 

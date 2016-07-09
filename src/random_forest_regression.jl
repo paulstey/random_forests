@@ -288,7 +288,7 @@ end
 
 function build_tree_df{T<:Float64}(y::Vector{T}, X::DataFrame, maxlabels=5, nsubfeatures=0, maxdepth=-1, max_surrogates=5)
     n = size(X, 1)
-    warn("There are $n rows")
+    # warn("There are $n rows")
     if maxdepth < -1
         error("Unexpected value for maxdepth: $(maxdepth) (expected: maxdepth >= 0, or maxdepth = -1 for infinite depth)")
     end
@@ -306,6 +306,7 @@ function build_tree_df{T<:Float64}(y::Vector{T}, X::DataFrame, maxlabels=5, nsub
 
     if max_surrogates ≠ 0
         cols_with_na = find_na_cols(X)                  # needed for all recursive steps since rows of X change
+        surrogate_vars = Vector{Tuple}(max_surrogates)
     end
 
     if col_idx in cols_with_na
@@ -323,10 +324,10 @@ function build_tree_df{T<:Float64}(y::Vector{T}, X::DataFrame, maxlabels=5, nsub
         surrogate_vars = surrogate_splits(split_with_na, X, row_indcs, col_indcs, 5)
         split = apply_surrogates(split_with_na, X, surrogate_vars)
 
-        display(split)
-        display(X)
-        display(y)
-        display(row_indcs)
+        # display(split)
+        # display(X)
+        # display(y)
+        # display(row_indcs)
     else
         split = X[:, col_idx] .< thresh
     end
@@ -342,12 +343,33 @@ n = 10
 p = 3
 X = DataFrame(randn(n, p));
 y = randn(n);
-X_mis = add_missing(X, 0.3)
+X_mis = add_missing(X, 0.1)
 build_tree_df(y, X_mis)
 
 
 
 
+function build_forest_df{T <: Float64}(y::Vector{T}, X::DataFrame, nsubfeatures::Integer, ntrees::Integer, maxlabels=5, partialsampling=0.7, maxdepth=-1)
+    
+    partialsampling = partialsampling > 1.0 ? 1.0 : partialsampling
+    
+    n = length(y)
+    n_subsamples = round(Int, partialsampling * n)
+    
+    forest = @parallel (vcat) for i in 1:ntrees
+        inds = rand(1:n, n_subsamples)
+        build_tree_df(y[inds], X[inds,:], maxlabels, nsubfeatures, maxdepth)
+    end
+    return Ensemble([forest;])
+end
+
+
+n = 10
+p = 3
+X = DataFrame(randn(n, p));
+y = randn(n);
+X_mis = add_missing(X, 0.3)
+build_forest_df(y, X_mis, p, 50)
 
 
 
@@ -362,44 +384,3 @@ build_tree_df(y, X_mis)
 
 
 
-
-
-
-
-
-# Spare parts
-
-
-# function make_na_indicator(dat)
-#     X_hasna = BitArray{2}(nrow(dat), ncol(dat))
-#
-#     for j in 1:ncol(dat)
-#         X_hasna[:, j] = isna(dat[:, j])
-#     end
-#     return X_hasna
-# end
-
-# function build_tree{T<:Float64}(y::Vector{T}, X::DataFrame, row_indcs, maxlabels=5, nsubfeatures=0, maxdepth=-1)
-#
-#     if maxdepth < -1
-#         error("Unexpected value for maxdepth: $(maxdepth) (expected: maxdepth >= 0, or maxdepth = -1 for infinite depth)")
-#     end
-#
-#     if length(y) <= maxlabels || maxdepth == 0            # stopping rules
-#         return Leaf(mean(y), y)
-#     end
-#
-#     S = _split_mse(y, X, nsubfeatures)
-#
-#     if S == NO_BEST
-#         return Leaf(mean(y), y)
-#     end
-#
-#     col_idx, thresh = S
-#
-#     split = X[:, col_idx] .< thresh
-#     return Node(col_idx,
-#                 thresh,
-#                 build_tree(y[split], X[split,:], row_indcs[split], maxlabels, nsubfeatures, max(maxdepth-1, -1)),
-#                 build_tree(y[!split], X[!split,:], row_indcs[!split], maxlabels, nsubfeatures, max(maxdepth-1, -1)))
-# end

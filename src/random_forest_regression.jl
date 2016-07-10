@@ -306,7 +306,7 @@ function build_tree_df{T<:Float64}(y::Vector{T}, X::DataFrame, maxlabels=5, nsub
 
     if max_surrogates ≠ 0
         cols_with_na = find_na_cols(X)                  # needed for all recursive steps since rows of X change
-        surrogate_vars = Vector{Tuple}(max_surrogates)
+        surrogate_vars = Vector{Tuple{Int, Real}}(max_surrogates)
     end
 
     if col_idx in cols_with_na
@@ -339,11 +339,11 @@ function build_tree_df{T<:Float64}(y::Vector{T}, X::DataFrame, maxlabels=5, nsub
                 build_tree_df(y[!split], X[!split,:], maxlabels, nsubfeatures, max(maxdepth-1, -1)))
 end
 
-n = 10
-p = 3
+n = 100
+p = 15
 X = DataFrame(randn(n, p));
 y = randn(n);
-X_mis = add_missing(X, 0.1)
+X_mis = add_missing(X, 0.3)
 build_tree_df(y, X_mis)
 
 
@@ -364,12 +364,12 @@ function build_forest_df{T <: Float64}(y::Vector{T}, X::DataFrame, nsubfeatures:
 end
 
 
-n = 10
-p = 3
-X = DataFrame(randn(n, p));
-y = randn(n);
-X_mis = add_missing(X, 0.3)
-build_forest_df(y, X_mis, p, 50)
+# n = 10
+# p = 3
+# X = DataFrame(randn(n, p));
+# y = randn(n);
+# X_mis = add_missing(X, 0.3)
+# build_forest_df(y, X_mis, p, 50)
 
 
 

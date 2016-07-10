@@ -41,8 +41,8 @@ function _split_classifcation_error_loss(y::Vector, X::DataFrame, obs_row_indcs:
     y = y[obs_row_indcs]
 
     # println(size(X))
-    # println(column_indcs)
-
+    println(column_indcs)
+    
     for j in column_indcs
         keep_row = !isna(X[:, j])                # FIX THE BUG HERE!!!
         x_obs = convert(Vector, X[keep_row, j])
@@ -53,16 +53,25 @@ function _split_classifcation_error_loss(y::Vector, X::DataFrame, obs_row_indcs:
         else
             domain_j = sort(unique(x_obs))
         end
-
-        for thresh in domain_j[2:end]
-            cur_split = x_obs .< thresh
-            value = _classifcation_error_loss(y_obs[cur_split]) + _classifcation_error_loss(y_obs[!cur_split])
-            if value > best_val
-                best_val = value
-                best = (j, thresh)
+        if length(domain_j) > 1
+            for thresh in domain_j[2:end]
+                cur_split = x_obs .< thresh
+                value = _classifcation_error_loss(y_obs[cur_split]) + _classifcation_error_loss(y_obs[!cur_split])
+                if value > best_val
+                    best_val = value
+                    best = (j, thresh)
+                end
             end
-        end
+        else 
+
+            println(domain_j)
+            # println(y_obs)
+            warn("Column $j only has 1 unique observed value")
+        end 
     end
+    if best == NO_BEST 
+        error("No best found")
+    end 
     return best
 end
 

@@ -1,8 +1,7 @@
 # Random forests
-using RDatasets
 using Compat
 using Distributions
-using Gallium
+using DataFrames
 
 include("measures.jl")
 include("classification.jl")
@@ -176,8 +175,11 @@ function _split_mse_df{T<:Float64}(y::Vector{T}, X::DataFrame, nsubfeatures::Int
     for j in col_indcs
         keep_row = !isna(X[:, j])
         x_obs = convert(Vector, X[keep_row, j])
-        y_obs = y[keep_row]
+        if length(x_obs) == 0 
+            continue 
+        end 
 
+        y_obs = y[keep_row]
         ord = sortperm(x_obs)
         x_j = convert(Array{typeof(x_obs[1])}, x_obs[ord])
         y_ord = y_obs[ord]
@@ -199,26 +201,6 @@ function _split_mse_df{T<:Float64}(y::Vector{T}, X::DataFrame, nsubfeatures::Int
     end
     return best
 end
-
-
-
-# d = dataset("datasets", "airquality")
-# d[:row_idx] = 1:nrow(d)
-# dc = d[complete_cases(d), :];
-# X = convert(Array, dc[:, 2:6]);
-# y = convert(Array{Float64,1}, dc[:, 1]);
-#
-# @time _split_mse(y, X, 0)
-#
-# keep_idx = !isna(d[:,1])
-# @time _split_mse_df(convert(Vector{Float64}, d[keep_idx, 1]), d[keep_idx, 2:6], 0)
-
-
-
-
-
-
-
 
 
 
@@ -339,11 +321,11 @@ function build_tree_df{T<:Float64}(y::Vector{T}, X::DataFrame, maxlabels=5, nsub
                 build_tree_df(y[!split], X[!split,:], maxlabels, nsubfeatures, max(maxdepth-1, -1)))
 end
 
-n = 100
-p = 15
+n = 20
+p = 5
 X = DataFrame(randn(n, p));
 y = randn(n);
-X_mis = add_missing(X, 0.3)
+X_mis = add_missing(X, 0.95)
 build_tree_df(y, X_mis)
 
 

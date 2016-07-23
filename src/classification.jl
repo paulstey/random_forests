@@ -11,7 +11,6 @@ function _split_classifcation_error_loss(y::Vector, X::DataFrame, obs_row_indcs:
         x_obs = convert(Vector, X[keep_row, j])
         y_obs = y[keep_row]
         wgts_obs = weights[keep_row]
-
         if length(unique(x_obs)) ≥ 100
             domain_j = quantile(x_obs, linspace(0.01, 0.99, 99))
         else
@@ -44,11 +43,12 @@ function _split_classifcation_error_loss(y::Vector, X::DataFrame, obs_row_indcs:
     # println(column_indcs)
     
     for j in column_indcs
-        keep_row = !isna(X[:, j])                # FIX THE BUG HERE!!!
+        keep_row = !isna(X[:, j])               
         x_obs = convert(Vector, X[keep_row, j])
         y_obs = y[keep_row]
 
         if length(unique(x_obs)) ≥ 100
+            x_obs = convert(Array{Float64}, x_obs)          # can't be Array{Any,1} for quantile()
             domain_j = quantile(x_obs, linspace(0.01, 0.99, 99))
         else
             domain_j = sort(unique(x_obs))

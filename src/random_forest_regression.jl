@@ -2,36 +2,12 @@
 using Compat
 using Distributions
 using DataFrames
+using Base.Threads
 
 include("measures.jl")
 include("classification.jl")
 include("surrogates.jl")
-
-
-const NO_BEST = (0, 0)
-
-immutable Leaf
-    majority::Any
-    values::Vector
-end
-
-@compat immutable Node
-    col_idx::Integer
-    split_value::Any
-    surrogates::Array{Tuple{Int, Real}, 1}                # This holds our surrogate vars
-
-    # pointers to daughter nodes
-    left::Union{Leaf, Node}
-    right::Union{Leaf, Node}
-end
-
-@compat typealias LeafOrNode Union{Leaf, Node}
-
-
-immutable Ensemble
-    trees::Vector{Node}
-end
-
+include("utils.jl")
 
 
 """
@@ -124,45 +100,45 @@ Variable name changes from original code
   inds       -> col_indcs
 
 """
-function _split_mse{T<:Float64, U<:Real}(y::Vector{T}, X::Matrix{U}, nsubfeatures::Int)
-    n, p = size(X)
-    best = NO_BEST
-    best_val = -Inf
+# function _split_mse{T<:Float64, U<:Real}(y::Vector{T}, X::Matrix{U}, nsubfeatures::Int)
+#     n, p = size(X)
+#     best = NO_BEST
+#     best_val = -Inf
 
-    if nsubfeatures > 0
-        r = randperm(p)
-        col_indcs = r[1:nsubfeatures]
-    else
-        col_indcs = 1:p
-    end
+#     if nsubfeatures > 0
+#         r = randperm(p)
+#         col_indcs = r[1:nsubfeatures]
+#     else
+#         col_indcs = 1:p
+#     end
 
-    for j in col_indcs
-        # Sorting used to be performed only when n <= 100, but doing it
-        # unconditionally improved fitting performance by 20%. It's a bit of a
-        # puzzle. Either it improved type-stability, or perhaps branch
-        # prediction is much better on a sorted sequence.
-        ord = sortperm(X[:, j])
-        x_j = X[ord, j]
-        y_ord = y[ord]
+#     for j in col_indcs
+#         # Sorting used to be performed only when n <= 100, but doing it
+#         # unconditionally improved fitting performance by 20%. It's a bit of a
+#         # puzzle. Either it improved type-stability, or perhaps branch
+#         # prediction is much better on a sorted sequence.
+#         ord = sortperm(X[:, j])
+#         x_j = X[ord, j]
+#         y_ord = y[ord]
 
-        if n > 100
-            if VERSION >= v"0.4.0-dev"
-                domain_j = quantile(x_j, linspace(0.01, 0.99, 99); sorted=true)
-            else  # sorted=true isn't supported on StatsBase's Julia 0.3 version
-                domain_j = quantile(x_j, linspace(0.01, 0.99, 99))
-            end
-        else
-            domain_j = x_j
-        end
-        value, thresh = _best_mse_loss(y_ord, x_j, domain_j)
+#         if n > 100
+#             if VERSION >= v"0.4.0-dev"
+#                 domain_j = quantile(x_j, linspace(0.01, 0.99, 99); sorted=true)
+#             else  # sorted=true isn't supported on StatsBase's Julia 0.3 version
+#                 domain_j = quantile(x_j, linspace(0.01, 0.99, 99))
+#             end
+#         else
+#             domain_j = x_j
+#         end
+#         value, thresh = _best_mse_loss(y_ord, x_j, domain_j)
 
-        if value > best_val
-            best_val = value
-            best = (j, thresh)
-        end
-    end
-    return best
-end
+#         if value > best_val
+#             best_val = value
+#             best = (j, thresh)
+#         end
+#     end
+#     return best
+# end
 
 
 
@@ -320,15 +296,16 @@ function build_tree_df{T <: Float64}(y::Vector{T}, X::DataFrame, maxlabels = 5, 
                 build_tree_df(y[!split], X[!split,:], maxlabels, nsubfeatures, max(maxdepth-1, -1)))
 end
 
-n = 20
+n = 200
 p = 5
 X = DataFrame(randn(n, p));
 y = randn(n);
-X_mis = add_missing(X, 0.95)
+X_mis = add_missing(X, 0.1);
 build_tree_df(y, X_mis)
 
 
-function build_forest_df{T <: Real}(y::Vector{T}, X::DataFrame, nsubfeatures, ntrees, maxlabels = 5, partialsampling = 0.7, maxdepth = -1)
+
+function build_forest_df{T <: Real}(y::Vector{T}, X::DataFrame, nsubfeatures, ntrees, maxlabels = 5, partialsampling = 0.7, maxdepth = -1; nthreads = 1)
     
     partialsampling = partialsampling > 1.0 ? 1.0 : partialsampling
     
@@ -337,20 +314,33 @@ function build_forest_df{T <: Real}(y::Vector{T}, X::DataFrame, nsubfeatures, nt
     
     tree_arr = Array{Node, 1}(ntrees)
 
-   @threads for i in 1:ntrees
-        inds = rand(1:n, n_subsamples)
-        tree_arr[i] = build_tree_df(y[inds], X[inds,:], maxlabels, nsubfeatures, maxdepth)
-    end
+    if nthreads ≥ 2
+        @threads for i in 1:ntrees
+            inds = rand(1:n, n_subsamples)
+            tree_arr[i] = build_tree_df(y[inds], X[inds,:], maxlabels, nsubfeatures, maxdepth)
+        end
+    else 
+        for i in 1:ntrees
+            inds = rand(1:n, n_subsamples)
+            tree_arr[i] = build_tree_df(y[inds], X[inds,:], maxlabels, nsubfeatures, maxdepth)
+        end
+    end 
     return Ensemble(tree_arr)
 end
 
 
-n = 100
+n = 200
 p = 10
 X = DataFrame(randn(n, p));
-y = randn(n);
-X_mis = add_missing(X, 0.3)
-build_forest_df(y, X_mis, p, 150)
+β = [0.002, 0.001, 0.003, 0.001, 0.001, 0.02, 0.01, 0.03, 5.0, 123.5]
+ε = randn(n)
+y = ones(n) .+ Array(X) * β .+ ε
+X_mis = add_missing(X, 0.2)
+
+
+fm1 = build_tree_df(y, X_mis)
+
+fm2 = build_forest_df(y, X_mis, p, 5; nthreads = 1)
 
 
 

@@ -15,7 +15,7 @@ immutable Leaf
     values::Vector
 end
 
-@compat immutable Node
+immutable Node
     col_idx::Integer
     split_value::Any
     surrogates::Array{Tuple{Int, Real}, 1}                # This holds our surrogate vars
@@ -25,7 +25,12 @@ end
     right::Union{Leaf, Node}
 end
 
-@compat typealias LeafOrNode Union{Leaf, Node}
+typealias LeafOrNode Union{Leaf, Node}
+
+
+immutable Ensemble
+    trees::Vector{Node}
+end
 
 
 
@@ -119,7 +124,7 @@ Variable name changes from original code
   inds       -> col_indcs
 
 """
-function _split_mse{T<:Float64, U<:Real}(y::Vector{T}, X::Matrix{U}, nsubfeatures::Int)
+function _split_mse{T<:Float64}(y::Vector{T}, X::Matrix, nsubfeatures)
     n, p = size(X)
     best = NO_BEST
     best_val = -Inf
@@ -162,7 +167,7 @@ end
 
 
 
-function _split_mse_df{T<:Float64}(y::Vector{T}, X::DataFrame, nsubfeatures::Int)
+function _split_mse_df{T<:Float64}(y::Vector{T}, X::DataFrame, nsubfeatures)
     n, p = size(X)
     best = NO_BEST
     best_val = -Inf
@@ -216,10 +221,6 @@ function find_na_cols(dat)
 end
 
 
-# function find_surrogates{T::BitArray}(left_node::T, y::Vector, X::Matrix, nsubfeatures::Int)
-
-
-
 apply_tree(leaf::Leaf, feature::Vector) = leaf.majority
 
 function apply_tree(tree::Node, features::Vector)
@@ -233,21 +234,7 @@ function apply_tree(tree::Node, features::Vector)
 end
 
 
-# function apply_tree(tree::LeafOrNode, features::Matrix)
-#     n = size(features,1)
-#     predictions = Array(Any, n)
-#     for i in 1:n
-#         predictions[i] = apply_tree(tree, squeeze(features[i,:],1))
-#     end
-#     if typeof(predictions[1]) <: Float64
-#         return float(predictions)
-#     else
-#         return predictions
-#     end
-# end
-
-
-function build_stump{T<:Float64, U<:Real}(y::Vector{T}, X::Matrix{U})
+function build_stump{T <: Float64, U<:Real}(y::Vector{T}, X::Matrix{U})
     S = _split_mse(y, X, 0)
 
     if S == NO_BEST
@@ -265,12 +252,8 @@ end
 
 
 
-
-
-
-function build_tree_df{T<:Float64}(y::Vector{T}, X::DataFrame, maxlabels=5, nsubfeatures=0, maxdepth=-1, max_surrogates=5)
-    n = size(X, 1)
-    # warn("There are $n rows")
+function build_tree_df{T <: Float64}(y::Vector{T}, X::DataFrame, maxlabels = 5, nsubfeatures = 0, maxdepth = -1, max_surrogates = 5)
+    n = nrow(X)
     if maxdepth < -1
         error("Unexpected value for maxdepth: $(maxdepth) (expected: maxdepth >= 0, or maxdepth = -1 for infinite depth)")
     end
@@ -305,11 +288,6 @@ function build_tree_df{T<:Float64}(y::Vector{T}, X::DataFrame, maxlabels=5, nsub
         # with the `split_with_na` result for each observed `row_indcs`.
         surrogate_vars = surrogate_splits(split_with_na, X, row_indcs, col_indcs, 5)
         split = apply_surrogates(split_with_na, X, surrogate_vars)
-
-        # display(split)
-        # display(X)
-        # display(y)
-        # display(row_indcs)
     else
         split = X[:, col_idx] .< thresh
     end
@@ -329,34 +307,29 @@ X_mis = add_missing(X, 0.95)
 build_tree_df(y, X_mis)
 
 
-
-
-function build_forest_df{T <: Float64}(y::Vector{T}, X::DataFrame, nsubfeatures::Integer, ntrees::Integer, maxlabels=5, partialsampling=0.7, maxdepth=-1)
+function build_forest_df{T <: Real}(y::Vector{T}, X::DataFrame, nsubfeatures, ntrees, maxlabels = 5, partialsampling = 0.7, maxdepth = -1)
     
     partialsampling = partialsampling > 1.0 ? 1.0 : partialsampling
     
     n = length(y)
     n_subsamples = round(Int, partialsampling * n)
     
-    forest = @parallel (vcat) for i in 1:ntrees
+    tree_arr = Array{Node, 1}(ntrees)
+
+    @threads for i in 1:ntrees
         inds = rand(1:n, n_subsamples)
-        build_tree_df(y[inds], X[inds,:], maxlabels, nsubfeatures, maxdepth)
+        tree_arr[i] = build_tree_df(y[inds], X[inds,:], maxlabels, nsubfeatures, maxdepth)
     end
-    return Ensemble([forest;])
+    return Ensemble(tree_arr)
 end
 
 
-# n = 10
-# p = 3
-# X = DataFrame(randn(n, p));
-# y = randn(n);
-# X_mis = add_missing(X, 0.3)
-# build_forest_df(y, X_mis, p, 50)
-
-
-
-
-
+n = 10
+p = 3
+X = DataFrame(randn(n, p));
+y = randn(n);
+X_mis = add_missing(X, 0.3)
+build_forest_df(y, X_mis, p, 50)
 
 
 

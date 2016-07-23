@@ -124,53 +124,54 @@ Variable name changes from original code
   inds       -> col_indcs
 
 """
-function _split_mse{T<:Float64}(y::Vector{T}, X::Matrix, nsubfeatures)
+# function _split_mse{T<:Float64}(y::Vector{T}, X::Matrix, mtry)
+#     n, p = size(X)
+#     best = NO_BEST
+#     best_val = -Inf
+
+#     if mtry > 0
+#         r = randperm(p)
+#         col_indcs = r[1:mtry]
+#     else
+#         col_indcs = 1:p
+#     end
+
+#     for j in col_indcs
+#         # Sorting used to be performed only when n <= 100, but doing it
+#         # unconditionally improved fitting performance by 20%. It's a bit of a
+#         # puzzle. Either it improved type-stability, or perhaps branch
+#         # prediction is much better on a sorted sequence.
+#         ord = sortperm(X[:, j])
+#         x_j = X[ord, j]
+#         y_ord = y[ord]
+
+#         if n > 100
+#             if VERSION >= v"0.4.0-dev"
+#                 domain_j = quantile(x_j, linspace(0.01, 0.99, 99); sorted=true)
+#             else  # sorted=true isn't supported on StatsBase's Julia 0.3 version
+#                 domain_j = quantile(x_j, linspace(0.01, 0.99, 99))
+#             end
+#         else
+#             domain_j = x_j
+#         end
+#         value, thresh = _best_mse_loss(y_ord, x_j, domain_j)
+
+#         if value > best_val
+#             best_val = value
+#             best = (j, thresh)
+#         end
+#     end
+#     return best
+# end
+
+
+
+
+function _split_mse_df{T<:Float64}(y::Vector{T}, X::DataFrame, mtry)
     n, p = size(X)
     best = NO_BEST
     best_val = -Inf
-
-    if nsubfeatures > 0
-        r = randperm(p)
-        col_indcs = r[1:nsubfeatures]
-    else
-        col_indcs = 1:p
-    end
-
-    for j in col_indcs
-        # Sorting used to be performed only when n <= 100, but doing it
-        # unconditionally improved fitting performance by 20%. It's a bit of a
-        # puzzle. Either it improved type-stability, or perhaps branch
-        # prediction is much better on a sorted sequence.
-        ord = sortperm(X[:, j])
-        x_j = X[ord, j]
-        y_ord = y[ord]
-
-        if n > 100
-            if VERSION >= v"0.4.0-dev"
-                domain_j = quantile(x_j, linspace(0.01, 0.99, 99); sorted=true)
-            else  # sorted=true isn't supported on StatsBase's Julia 0.3 version
-                domain_j = quantile(x_j, linspace(0.01, 0.99, 99))
-            end
-        else
-            domain_j = x_j
-        end
-        value, thresh = _best_mse_loss(y_ord, x_j, domain_j)
-
-        if value > best_val
-            best_val = value
-            best = (j, thresh)
-        end
-    end
-    return best
-end
-
-
-
-
-function _split_mse_df{T<:Float64}(y::Vector{T}, X::DataFrame, nsubfeatures)
-    n, p = size(X)
-    best = NO_BEST
-    best_val = -Inf
+    nsubfeatures = round(mtry * p)
     if nsubfeatures > 0
         r = randperm(p)
         col_indcs = r[1:nsubfeatures]
@@ -186,7 +187,7 @@ function _split_mse_df{T<:Float64}(y::Vector{T}, X::DataFrame, nsubfeatures)
 
         y_obs = y[keep_row]
         ord = sortperm(x_obs)
-        x_j = convert(Array{typeof(x_obs[1])}, x_obs[ord])
+        x_j = x_obs[ord]
         y_ord = y_obs[ord]
 
         if n > 100
@@ -252,7 +253,7 @@ end
 
 
 
-function build_tree_df{T <: Float64}(y::Vector{T}, X::DataFrame, maxlabels = 5, nsubfeatures = 0, maxdepth = -1, max_surrogates = 5)
+function build_tree_df{T <: Float64}(y::Vector{T}, X::DataFrame, maxlabels = 5, mtry = 0, maxdepth = -1, max_surrogates = 5)
     n = nrow(X)
     if maxdepth < -1
         error("Unexpected value for maxdepth: $(maxdepth) (expected: maxdepth >= 0, or maxdepth = -1 for infinite depth)")
@@ -261,7 +262,7 @@ function build_tree_df{T <: Float64}(y::Vector{T}, X::DataFrame, maxlabels = 5, 
         return Leaf(mean(y), y)
     end
 
-    S = _split_mse_df(y, X, nsubfeatures)               # get [complete data] optimal split point
+    S = _split_mse_df(y, X, mtry)               # get [complete data] optimal split point
 
     if S == NO_BEST
         return Leaf(mean(y), y)
@@ -295,8 +296,8 @@ function build_tree_df{T <: Float64}(y::Vector{T}, X::DataFrame, maxlabels = 5, 
     return Node(col_idx,
                 thresh,
                 surrogate_vars,
-                build_tree_df(y[split], X[split,:], maxlabels, nsubfeatures, max(maxdepth-1, -1)),
-                build_tree_df(y[!split], X[!split,:], maxlabels, nsubfeatures, max(maxdepth-1, -1)))
+                build_tree_df(y[split], X[split,:], maxlabels, mtry, max(maxdepth-1, -1)),
+                build_tree_df(y[!split], X[!split,:], maxlabels, mtry, max(maxdepth-1, -1)))
 end
 
 n = 20
@@ -307,7 +308,7 @@ X_mis = add_missing(X, 0.95)
 build_tree_df(y, X_mis)
 
 
-function build_forest_df{T <: Real}(y::Vector{T}, X::DataFrame, nsubfeatures, ntrees, maxlabels = 5, partialsampling = 0.7, maxdepth = -1)
+function build_forest_df{T <: Real}(y::Vector{T}, X::DataFrame, mtry, ntrees, maxlabels = 5, partialsampling = 0.7, maxdepth = -1)
     
     partialsampling = partialsampling > 1.0 ? 1.0 : partialsampling
     
@@ -318,7 +319,7 @@ function build_forest_df{T <: Real}(y::Vector{T}, X::DataFrame, nsubfeatures, nt
 
     @threads for i in 1:ntrees
         inds = rand(1:n, n_subsamples)
-        tree_arr[i] = build_tree_df(y[inds], X[inds,:], maxlabels, nsubfeatures, maxdepth)
+        tree_arr[i] = build_tree_df(y[inds], X[inds,:], maxlabels, mtry, maxdepth)
     end
     return Ensemble(tree_arr)
 end

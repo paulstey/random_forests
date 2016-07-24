@@ -64,3 +64,18 @@ end
 # wgt = repeat([1], inner = n);
 #
 # @time _classifcation_error_loss(y)
+
+
+
+
+function mean_squared_error(actual, predicted)
+    @assert length(actual) == length(predicted)
+    return mean((actual - predicted).^2)
+end
+
+function R2(actual, predicted)
+    @assert length(actual) == length(predicted)
+    ss_residual = sum((actual - predicted).^2)
+    ss_total = sum((actual .- mean(actual)).^2)
+    return 1.0 - ss_residual/ss_total
+end

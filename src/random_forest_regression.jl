@@ -340,13 +340,38 @@ X_mis = add_missing(X, 0.2)
 
 fm1 = build_tree_df(y, X_mis)
 
-fm2 = build_forest_df(y, X_mis, p, 5; nthreads = 1)
+fm2 = build_forest_df(y, X_mis, p, 50; nthreads = 2)
+
+res = apply_forest(fm2, X)
 
 
 
 
+function mean_impute(v) 
+    μ = mean(dropna(v))
+    n = length(v)
+    res = zeros(n)
+    for i = 1:n
+        if isna(v[i]) 
+            res[i] = μ
+        else 
+            res[i] = v[i]
+        end
+    end 
+    res 
+end 
 
+# using RDatasets
 
+# ds = dataset("datasets", "airquality")
+# ds1 = ds[:, 2:6]
+# y = convert(Vector, mean_impute(ds[:, 1]))
+ 
+# fm1 = build_tree_df(y, ds1)
+
+# fm3 = build_forest_df(y, ds1, 5, 50; nthreads = 2)
+
+# y_hat2 = apply_forest(fm3, convert(Matrix{Any}, ds1))
 
 
 

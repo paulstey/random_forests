@@ -29,6 +29,41 @@ end
 
 
 
+function apply_forest(forest::Ensemble, X::Matrix)
+    n = size(X, 1)
+    y_hat = Array(Any, n)
+    for i in 1:n
+        if VERSION < v"0.5.0-dev"
+            y_hat[i] = apply_forest(forest, squeeze(X[i, :], 1))
+        else 
+            y_hat[i] = apply_forest(forest, X[i, :])
+        end 
+    end
+    if eltype(y_hat) <: Float64
+        return float(y_hat)
+    else
+        return y_hat
+    end
+end
+
+
+function apply_forest(forest::Ensemble, x::Vector)
+    ntrees = length(forest)
+    votes = Array(Any, ntrees)
+    
+    for i in 1:ntrees
+        votes[i] = apply_tree(forest.trees[i], x)
+    end
+    
+    if eltype(votes) <: Float64
+        return mean(votes)
+    else
+        return majority_vote(votes)
+    end
+end
+
+
+
 convert(::Type{Node}, x::Leaf) = Node(0, nothing, x, Leaf(nothing,[nothing]))
 promote_rule(::Type{Node}, ::Type{Leaf}) = Node
 promote_rule(::Type{Leaf}, ::Type{Node}) = Node

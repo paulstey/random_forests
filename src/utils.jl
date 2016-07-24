@@ -11,7 +11,7 @@ immutable Leaf
 end
 
 @compat immutable Node
-    col_idx::Integer
+    col_idx::Int
     split_value::Any
     surrogates::Array{Tuple{Int, Real}, 1}                # This holds our surrogate vars
 
@@ -22,10 +22,24 @@ end
 
 @compat typealias LeafOrNode Union{Leaf, Node}
 
-
 immutable Ensemble
     trees::Vector{Node}
 end
+
+function convert(::Type{Node}, x::Leaf) 
+    warn("converting leaf to node")
+    return Node(0, nothing, x, Leaf(nothing,[nothing]))
+end 
+promote_rule(::Type{Node}, ::Type{Leaf}) = Node
+promote_rule(::Type{Leaf}, ::Type{Node}) = Node
+
+length(leaf::Leaf) = 1
+length(tree::Node) = length(tree.left) + length(tree.right)
+length(ensemble::Ensemble) = length(ensemble.trees)
+
+
+depth(leaf::Leaf) = 0
+depth(tree::Node) = 1 + max(depth(tree.left), depth(tree.right))
 
 
 
@@ -63,19 +77,6 @@ function apply_forest(forest::Ensemble, x::Vector)
 end
 
 
-
-convert(::Type{Node}, x::Leaf) = Node(0, nothing, x, Leaf(nothing,[nothing]))
-promote_rule(::Type{Node}, ::Type{Leaf}) = Node
-promote_rule(::Type{Leaf}, ::Type{Node}) = Node
-
-length(leaf::Leaf) = 1
-length(tree::Node) = length(tree.left) + length(tree.right)
-length(ensemble::Ensemble) = length(ensemble.trees)
-
-
-
-depth(leaf::Leaf) = 0
-depth(tree::Node) = 1 + max(depth(tree.left), depth(tree.right))
 
 function print_tree(leaf::Leaf, depth=-1, indent=0)
     matches = find(leaf.values .== leaf.majority)

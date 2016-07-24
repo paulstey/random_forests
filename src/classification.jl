@@ -1,4 +1,3 @@
-using Distributions
 
 function _split_classifcation_error_loss(y::Vector, X::DataFrame, obs_row_indcs::Vector{Int}, column_indcs::Vector{Int}, weights::Vector)
     best = NO_BEST
@@ -90,20 +89,6 @@ end
 # @time surrogate_splits(y, X, collect(1:n), collect(1:p), 5, wgt)
 
 
-function add_missing(dat::DataFrame, pr)
-    d = Bernoulli(pr)
-    X = copy(dat)
-    n, p = size(X)
-    for j = 1:p
-        X[:, j] = convert(DataArray{Any, 1}, X[:, j])
-        for i = 1:n
-            if rand(d) == 1
-                X[i, j] = NA
-            end
-        end
-    end
-    return X
-end
 
 
 #

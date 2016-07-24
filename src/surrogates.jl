@@ -1,4 +1,20 @@
+using Distributions
 
+
+function add_missing(dat::DataFrame, pr)
+    d = Bernoulli(pr)
+    X = copy(dat)
+    n, p = size(X)
+    for j = 1:p
+        X[:, j] = convert(DataArray{Any, 1}, X[:, j])
+        for i = 1:n
+            if rand(d) == 1
+                X[i, j] = NA
+            end
+        end
+    end
+    return X
+end
 
 
 function surrogate_splits(y_obs_split::Vector, X::DataFrame, col_indcs::Vector{Int}, max_surrogates::Int, weights::Vector)
@@ -61,3 +77,13 @@ function apply_surrogates(split_with_na::Vector, X::DataFrame, surr::Array{Tuple
     end
     return split
 end
+
+has_surrogates(node::Node) = isdefined(node.surrogates)
+
+function count_surrogates(node::Node)
+    if has_surrogates(node)
+        n_surr = length(node.surrogates)
+    end 
+    return n_surr 
+end 
+

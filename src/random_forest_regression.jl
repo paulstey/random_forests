@@ -4,10 +4,10 @@ using Distributions
 using DataFrames
 using Base.Threads
 
+include("utils.jl")
 include("measures.jl")
 include("classification.jl")
 include("surrogates.jl")
-include("utils.jl")
 
 
 """
@@ -201,31 +201,54 @@ end
 
 
 
-apply_tree(leaf::Leaf, feature::Vector) = leaf.majority
+apply_tree(leaf::Leaf, x::DataArray) = leaf.majority
 
-function apply_tree(tree::Node, features::Vector)
-    if tree.split_value == nothing                  # when would this be true???
-        return apply_tree(tree.left, features)
-    elseif features[tree.col_idx] < tree.split_value
-        return apply_tree(tree.left, features)
+function apply_tree(tree::Node, x::DataArray)
+    if tree.split_value == nothing                  # true at leaf node
+        return apply_tree(tree.left, x)
+    elseif isna(x[tree.col_idx])
+        n_surr = count_surrogates(tree)
+        warn("n_surr is: $n_surr")
+        
+        for i = 1:n_surr 
+            idx, val = tree.surrogates[i]
+            if idx ≠ 0 && !isna(x[idx]) 
+                
+                if x[idx] < val 
+                    return apply_tree(tree.left, x)
+                else 
+                    return apply_tree(tree.right, x)
+                end 
+            # If there are no surrogates for this predictor we flip a 
+            # coin to decide left/right. 
+            elseif idx == 0 || (isna(x[idx]) && i == n_surr)
+                go_left = bitrand(1)[1]             
+                if go_left
+                    return apply_tree(tree.left, x)
+                else 
+                    return apply_tree(tree.right, x)
+                end 
+            end 
+        end
+    # simplest case: have observed value
+    elseif x[tree.col_idx] < tree.split_value
+        return apply_tree(tree.left, x)
     else
-        return apply_tree(tree.right, features)
+        return apply_tree(tree.right, x)
     end
 end
 
 
-# function apply_tree(tree::LeafOrNode, features::Matrix)
-#     n = size(features,1)
-#     predictions = Array(Any, n)
-#     for i in 1:n
-#         predictions[i] = apply_tree(tree, squeeze(features[i,:],1))
-#     end
-#     if typeof(predictions[1]) <: Float64
-#         return float(predictions)
-#     else
-#         return predictions
-#     end
-# end
+function apply_tree(tree::LeafOrNode, X::DataFrame)
+    n = size(X, 1)
+    predictions = Array(Any, n)
+    for i in 1:n
+        # Careful here: conversion to DataArray does not drop dimension, 
+        # so X is a 1-row matrix; but this this works for now.
+        predictions[i] = apply_tree(tree, DataArray(X[i, :])')   
+    end
+    return predictions
+end
 
 
 function build_stump{T <: Float64, U<:Real}(y::Vector{T}, X::Matrix{U})
@@ -296,11 +319,11 @@ function build_tree_df{T <: Float64}(y::Vector{T}, X::DataFrame, maxlabels = 5, 
                 build_tree_df(y[!split], X[!split,:], maxlabels, nsubfeatures, max(maxdepth-1, -1)))
 end
 
-n = 200
+n = 30
 p = 5
 X = DataFrame(randn(n, p));
 y = randn(n);
-X_mis = add_missing(X, 0.1);
+X_mis = add_missing(X, 0.0);
 build_tree_df(y, X_mis)
 
 
@@ -308,10 +331,8 @@ build_tree_df(y, X_mis)
 function build_forest_df{T <: Real}(y::Vector{T}, X::DataFrame, nsubfeatures, ntrees, maxlabels = 5, partialsampling = 0.7, maxdepth = -1; nthreads = 1)
     
     partialsampling = partialsampling > 1.0 ? 1.0 : partialsampling
-    
     n = length(y)
     n_subsamples = round(Int, partialsampling * n)
-    
     tree_arr = Array{Node, 1}(ntrees)
 
     if nthreads ≥ 2
@@ -335,13 +356,16 @@ X = DataFrame(randn(n, p));
 β = [0.002, 0.001, 0.003, 0.001, 0.001, 0.02, 0.01, 0.03, 5.0, 123.5]
 ε = randn(n)
 y = ones(n) .+ Array(X) * β .+ ε
-X_mis = add_missing(X, 0.2)
+X_mis = add_missing(X, 0.85)
 
 
 fm1 = build_tree_df(y, X_mis)
+res1 = apply_tree(fm1, X_mis)
+R2(y, res1)
+mean_squared_error(y, res1)
+
 
 fm2 = build_forest_df(y, X_mis, p, 50; nthreads = 2)
-
 res = apply_forest(fm2, X)
 
 

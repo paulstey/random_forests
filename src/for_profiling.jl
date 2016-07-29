@@ -1,40 +1,7 @@
-using DataFrames
+using RDatasets
 
-include("measures.jl")
+include("EnsembleMethods.jl")
 
-const NO_BEST = (0, 0)
-
-
-# This method is dispatched when weights are omitted. This
-# allows us to compute the loss function 5x faster
-function _split_classifcation_error_loss(y::Vector, X::DataFrame, column_indcs::Vector{Int})
-    best = NO_BEST
-    best_val = -Inf
-
-    for j in column_indcs
-        keep_row = !isna(X[:, j])                # use only non-NA values
-        x_obs = convert(Vector, X[keep_row, j])
-        y_obs = y[keep_row]
-
-        if length(unique(x_obs)) ≥ 100
-            domain_j = quantile(x_obs, linspace(0.01, 0.99, 99))
-        else
-            domain_j = sort(unique(x_obs))
-        end
-
-        for thresh in domain_j[2:end]
-
-            cur_split = x_obs .< thresh
-            value = _classifcation_error_loss(y[cur_split]) + _classifcation_error_loss(y[!cur_split])
-
-            if value > best_val
-                best_val = value
-                best = (j, thresh)
-            end
-        end
-    end
-    return best
-end
 
 
 n = 1000
@@ -45,3 +12,48 @@ wgt = repeat([1], inner = n);
 
 @time _split_classifcation_error_loss(y, X, wgt, collect(1:p))
 @profile _split_classifcation_error_loss(y, X, wgt, collect(1:p))
+
+
+
+
+# testing build_tree_df()
+n = 30
+p = 5
+X = DataFrame(randn(n, p));
+y = randn(n);
+X_mis = add_missing(X, 0.0);
+build_tree_df(y, X_mis)
+
+
+# test build_tree_df() and apply_tree()
+n = 200
+p = 10
+X = DataFrame(randn(n, p));
+β = [0.002, 0.001, 0.003, 0.001, 0.001, 0.02, 0.01, 0.03, 5.0, 123.5]
+ε = randn(n)
+y = ones(n) .+ Array(X) * β .+ ε
+X_mis = add_missing(X, 0.15)
+
+
+fm1 = build_tree_df(y, X_mis)
+res1 = apply_tree(fm1, X_mis)
+R2(y, res1)
+mean_squared_error(y, res1)
+
+# testing build_forest_df()
+fm2 = build_forest_df(y, X_mis, p, 50; nthreads = 2)
+res = apply_forest(fm2, X)
+
+
+
+
+
+# ds = dataset("datasets", "airquality")
+# ds1 = ds[:, 2:6]
+# y = convert(Vector, mean_impute(ds[:, 1]))
+
+# fm1 = build_tree_df(y, ds1)
+
+# fm3 = build_forest_df(y, ds1, 5, 50; nthreads = 2)
+
+# y_hat2 = apply_forest(fm3, convert(Matrix{Any}, ds1))

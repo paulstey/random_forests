@@ -65,11 +65,11 @@ function apply_surrogates(split_with_na::Vector, X::DataFrame, surr::Array{Tuple
                         split[i] = X[i, j] .< col_thresh[idx]
                         break
                     end
-                # when NO_BEST was result from surrogate_splits() we 
+                # when NO_BEST was result from surrogate_splits() we
                 # assign the split value at random
-                elseif j == 0       
+                elseif j == 0
                     split[i] = bitrand(1)[1]
-                end 
+                end
             end
         else
             split[i] = split_with_na[i]
@@ -81,9 +81,6 @@ end
 has_surrogates(node::Node) = isdefined(node.surrogates)
 
 function count_surrogates(node::Node)
-    if has_surrogates(node)
-        n_surr = length(node.surrogates)
-    end 
-    return n_surr 
-end 
-
+    n_surr = has_surrogates(node) ? length(node.surrogates) : 0
+    return n_surr
+end

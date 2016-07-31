@@ -1,5 +1,4 @@
 # EnsembleMethods
-using Compat
 using Distributions
 using DataFrames
 using Base.Threads
@@ -16,7 +15,7 @@ immutable Leaf
     values::Vector
 end
 
-@compat immutable Node
+immutable Node
     col_idx::Int
     split_value::Any
     surrogates::Array{Tuple{Int, Real}, 1}                # This holds our surrogate vars
@@ -26,7 +25,7 @@ end
     right::Union{Leaf, Node}
 end
 
-@compat typealias LeafOrNode Union{Leaf, Node}
+typealias LeafOrNode Union{Leaf, Node}
 
 immutable Ensemble
     trees::Vector{Node}

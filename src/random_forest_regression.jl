@@ -291,6 +291,8 @@ function build_forest_df{T <: Real}(y::Vector{T}, X::DataFrame, nsubfeatures, nt
             inds = rand(1:n, n_subsamples)
             tree_arr[t] = build_tree_df(y[inds], X[inds, :], maxlabels, nsubfeatures, maxdepth)
 
+            println(tree_arr[t])
+
             # print_tree(tree_arr[t])
             # get OOB indices to calculate OOB score
             oob_indcs = setdiff(collect(1:n), inds)

@@ -1,6 +1,12 @@
 # Apply fitted trees or forests
 
-apply_tree(leaf::Leaf, x::DataArray) = leaf.majority
+function apply_tree(leaf::Leaf, x::DataArray)
+    if leaf.majority == nothing 
+        error("leaf.majority == nothing for $x")
+    end 
+    return leaf.majority 
+end 
+
 
 function apply_tree(tree::Node, x::DataArray)
     if tree.split_value == nothing                  # true at leaf node, maybe??
@@ -8,28 +14,40 @@ function apply_tree(tree::Node, x::DataArray)
         return apply_tree(tree.left, x)
     elseif isna(x[tree.col_idx])
         n_surr = count_surrogates(tree)
+        
+        if n_surr > 0
+            # most often, we do have surrogates
+            for i = 1:n_surr
+                idx, val = tree.surrogates[i]
+                if idx ≠ 0 && !isna(x[idx])
 
-        for i = 1:n_surr
-            idx, val = tree.surrogates[i]
-            if idx ≠ 0 && !isna(x[idx])
-
-                if x[idx] < val
-                    return apply_tree(tree.left, x)
-                else
-                    return apply_tree(tree.right, x)
+                    if x[idx] < val
+                        return apply_tree(tree.left, x)
+                    else
+                        return apply_tree(tree.right, x)
+                    end
+                # If there are no surrogates for this predictor we flip a
+                # coin to decide left/right.
+                elseif idx == 0 || (isna(x[idx]) && i == n_surr)
+                    go_left = bitrand(1)[1]
+                    if go_left
+                        return apply_tree(tree.left, x)
+                    else
+                        return apply_tree(tree.right, x)
+                    end
                 end
-            # If there are no surrogates for this predictor we flip a
-            # coin to decide left/right.
-            elseif idx == 0 || (isna(x[idx]) && i == n_surr)
-                go_left = bitrand(1)[1]
-                if go_left
-                    return apply_tree(tree.left, x)
-                else
-                    return apply_tree(tree.right, x)
-                end
-            end
-        end
-    # simplest case: have observed value
+            end 
+        # There are corner cases where no initialized surrogates exist 
+        elseif n_surr == 0 
+            warn("No surrogates, so we flip a coin for observation: $x")
+            go_left = bitrand(1)[1]
+            if go_left
+                return apply_tree(tree.left, x)
+            else 
+                return apply_tree(tree.right, x)
+            end 
+        end 
+    # in the simplest case, we have observed value
     elseif x[tree.col_idx] < tree.split_value
         return apply_tree(tree.left, x)
     else
@@ -45,6 +63,9 @@ function apply_tree(tree::LeafOrNode, X::DataFrame)
         # Careful here: conversion to DataArray does not drop dimension,
         # so X is a 1-row matrix; but this this works for now.
         predictions[i] = apply_tree(tree, DataArray(X[i, :])')
+        if predictions[i] == nothing 
+            error("Prediction for row $i == nothing")
+        end 
     end
     return predictions
 end

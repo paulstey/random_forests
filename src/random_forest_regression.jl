@@ -278,12 +278,11 @@ function build_forest_df{T <: Real}(y::Vector{T}, X::DataFrame, nsubfeatures, nt
             # get OOB indices to calculate OOB score
             oob_indcs = setdiff(collect(1:n), inds)
             yhat = apply_tree(tree_arr[t], X[oob_indcs, :])
-            
+
             yhat_mat[oob_indcs, t] = yhat
         end
         # oob_score = par_oob_score(yhat_mat, y, oob_measure)
         oob_score = yhat_mat
-
     else
         yhat_mat = zeros(n, 2)          # col 1 is numerator, col 2 is denominator
         yhat_mat[:, 1] = fill(-Inf, n)
@@ -292,15 +291,29 @@ function build_forest_df{T <: Real}(y::Vector{T}, X::DataFrame, nsubfeatures, nt
             inds = rand(1:n, n_subsamples)
             tree_arr[t] = build_tree_df(y[inds], X[inds, :], maxlabels, nsubfeatures, maxdepth)
 
+            # print_tree(tree_arr[t])
             # get OOB indices to calculate OOB score
             oob_indcs = setdiff(collect(1:n), inds)
             yhat = apply_tree(tree_arr[t], X[oob_indcs, :])
-            println(yhat)
+            
+            # for ii = 1:length(yhat)
+            #     println("Indx $(oob_indcs[ii]) = $(yhat[ii])")
+            # end 
+            # println(yhat)
+            
+            if !all(isfinite(yhat_mat[oob_indcs, 1]))
+                for idx in oob_indcs
+                    if !isfinite(yhat_mat[idx, 1])
+                        yhat_mat[oob_indcs, 1] = 0.0 
+                    end 
+                end 
+            end            
+
             yhat_mat[oob_indcs, 1] += yhat 
             yhat_mat[oob_indcs, 2] += 1 
         end
-        if all(isfinite(yhat_mat[1, :]))
-            oob_score = yhat_mat[1, :] ./ yhat_mat[:, 2]
+        if all(isfinite(yhat_mat[:, 1]))
+            oob_score = R2(y, yhat_mat[:, 1] ./ yhat_mat[:, 2])
         else 
             warn("Not enough trees built to compute OOB score. Some rows were never out-of-bag")
             return nothing
@@ -323,7 +336,7 @@ function par_oob_score(yhat_mat, y, measure = "rsq")
         for i = 1:n 
             if isfinite(yhat_mat[i, t])
                 if !isfinite(yhat[i])
-                    yhat[i] = 0
+                    yhat[i] = 0.0
                 end 
                 yhat[i] += yhat_mat[i, t]
                 num_preds[i] += 1

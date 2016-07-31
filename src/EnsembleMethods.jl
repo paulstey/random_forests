@@ -35,7 +35,7 @@ end
 
 function convert(::Type{Node}, x::Leaf)
     warn("converting leaf to node")
-    return Node(0, nothing, x, Leaf(nothing,[nothing]))
+    return Node(0, nothing, Array{Tuple{Int, Real}, 1}(5), x, Leaf(nothing,[nothing]))
 end
 
 promote_rule(::Type{Node}, ::Type{Leaf}) = Node

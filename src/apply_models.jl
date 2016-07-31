@@ -3,7 +3,8 @@
 apply_tree(leaf::Leaf, x::DataArray) = leaf.majority
 
 function apply_tree(tree::Node, x::DataArray)
-    if tree.split_value == nothing                  # true at leaf node
+    if tree.split_value == nothing                  # true at leaf node, maybe??
+        error("WOW!!! Actually made it where tree.split_value == nothing!!!")
         return apply_tree(tree.left, x)
     elseif isna(x[tree.col_idx])
         n_surr = count_surrogates(tree)
@@ -39,7 +40,7 @@ end
 
 function apply_tree(tree::LeafOrNode, X::DataFrame)
     n = size(X, 1)
-    predictions = Array(Any, n)
+    predictions = Array(Any, n)             # this should not be type Any
     for i in 1:n
         # Careful here: conversion to DataArray does not drop dimension,
         # so X is a 1-row matrix; but this this works for now.

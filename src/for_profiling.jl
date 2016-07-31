@@ -39,7 +39,7 @@ R2(y, res1)
 mean_squared_error(y, res1)
 
 # testing build_forest_df()
-fm2 = build_forest_df(y, X_mis, p, 200; nthreads = 2)
+fm2 = build_forest_df(y, X_mis, 4, 200; nthreads = 2)
 # res = apply_forest(fm2, X)
 
 

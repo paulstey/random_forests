@@ -283,7 +283,6 @@ function build_forest_df{T <: Real}(y::Vector{T}, X::DataFrame, nsubfeatures, nt
             yhat_mat[oob_indcs, t] = yhat
         end
         oob_score = par_oob_score(yhat_mat, y, oob_measure)
-        # oob_score = yhat_mat
     else
         yhat_mat = zeros(n, 2)          # col 1 is numerator, col 2 is denominator
         yhat_mat[:, 1] = fill(-Inf, n)
@@ -295,11 +294,6 @@ function build_forest_df{T <: Real}(y::Vector{T}, X::DataFrame, nsubfeatures, nt
             # get OOB indices to calculate OOB score
             oob_indcs = setdiff(collect(1:n), inds)
             yhat = apply_tree(tree_arr[t], X[oob_indcs, :])
-            
-            # for ii = 1:length(yhat)
-            #     println("Indx $(oob_indcs[ii]) = $(yhat[ii])")
-            # end 
-            # println(yhat)
             
             if !all(isfinite(yhat_mat[oob_indcs, 1]))
                 for idx in oob_indcs

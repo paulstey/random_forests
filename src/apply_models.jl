@@ -15,8 +15,8 @@ function apply_tree(tree::Node, x::DataArray)
     elseif isna(x[tree.col_idx])
         n_surr = count_surrogates(tree)
         
-        if n_surr > 0
-            # most often, we do have surrogates
+        if n_surr > 0               # most often, we do have surrogates
+            
             for i = 1:n_surr
                 idx, val = tree.surrogates[i]
                 if idx ≠ 0 && !isna(x[idx])

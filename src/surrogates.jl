@@ -63,14 +63,7 @@ function apply_surrogates(split_with_na::Vector, X::DataFrame, surr::Array{Tuple
 end
 
 
-function count_surrogates(node::Node)
-    if isdefined(node.surrogates) 
-        res = length(node.surrogates)
-    else 
-        warn("Attempt to access undefined surrogates")
-        res = 0
-    end 
-    return res 
-end 
+count_surrogates(node::Node) = isdefined(node.surrogates) ? length(node.surrogates) : 0 
+
 
 

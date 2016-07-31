@@ -235,7 +235,8 @@ function build_tree_df{T <: Float64}(y::Vector{T}, X::DataFrame, maxlabels = 5, 
         surrogate_vars = Vector{Tuple{Int, Real}}(max_surrogates)
     end
 
-    if col_idx in cols_with_na
+    # if col_idx in cols_with_na
+    if col_idx in 1:ncol(X)                             # find surrogates even when no missing data
         na_rows = isna(X[:, col_idx])
         split_with_na = Array{Any, 1}(n)                # vector of Bools with some NA values
 
@@ -281,8 +282,8 @@ function build_forest_df{T <: Real}(y::Vector{T}, X::DataFrame, nsubfeatures, nt
 
             yhat_mat[oob_indcs, t] = yhat
         end
-        # oob_score = par_oob_score(yhat_mat, y, oob_measure)
-        oob_score = yhat_mat
+        oob_score = par_oob_score(yhat_mat, y, oob_measure)
+        # oob_score = yhat_mat
     else
         yhat_mat = zeros(n, 2)          # col 1 is numerator, col 2 is denominator
         yhat_mat[:, 1] = fill(-Inf, n)
@@ -291,9 +292,6 @@ function build_forest_df{T <: Real}(y::Vector{T}, X::DataFrame, nsubfeatures, nt
             inds = rand(1:n, n_subsamples)
             tree_arr[t] = build_tree_df(y[inds], X[inds, :], maxlabels, nsubfeatures, maxdepth)
 
-            println(tree_arr[t])
-
-            # print_tree(tree_arr[t])
             # get OOB indices to calculate OOB score
             oob_indcs = setdiff(collect(1:n), inds)
             yhat = apply_tree(tree_arr[t], X[oob_indcs, :])

@@ -14,8 +14,6 @@ wgt = repeat([1], inner = n);
 
 
 include("EnsembleMethods.jl")
-
-
 # testing build_tree_df()
 n = 30
 p = 5
@@ -25,25 +23,23 @@ X_mis = add_missing(X, 0.10);
 build_tree_df(y, X_mis)
 
 # test build_tree_df() and apply_tree()
-n = 40
+n = 200
 p = 10
 X = DataFrame(randn(n, p));
-β = [0.002, 0.001, 0.003, 0.001, 0.001, 0.02, 0.01, 0.03, 5.0, 123.5]
+β = [0.002, 0.001, 0.003, 0.001, 0.01, 0.03, 4.1, 3.8, 5.0, 112.5]
 ε = randn(n)
 y = ones(n) .+ Array(X) * β .+ ε
-X_mis = add_missing(X, 0.30)
+X_mis = add_missing(X, 0.10)
 
 
 fm1 = build_tree_df(y, X_mis)
 res1 = apply_tree(fm1, X_mis)
-if any(map(x -> (x == nothing), res1)) warn("WAIT STOP, STOP, STOP, STOP!!!!!") end 
-
 
 R2(y, res1)
 mean_squared_error(y, res1)
 
 # testing build_forest_df()
-fm2 = build_forest_df(y, X_mis, p, 15; nthreads = 1)
+fm2 = build_forest_df(y, X_mis, p, 200; nthreads = 2)
 # res = apply_forest(fm2, X)
 
 

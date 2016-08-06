@@ -91,14 +91,14 @@ Variable name changes from original code
   inds       -> col_indcs
 
 """
-# function _split_mse{T<:Float64, U<:Real}(y::Vector{T}, X::Matrix{U}, nsubfeatures::Int)
+# function _split_mse{T<:Float64, U<:Real}(y::Vector{T}, X::Matrix{U}, mtry::Int)
 #     n, p = size(X)
 #     best = NO_BEST
 #     best_val = -Inf
 
-#     if nsubfeatures > 0
+#     if mtry > 0
 #         r = randperm(p)
-#         col_indcs = r[1:nsubfeatures]
+#         col_indcs = r[1:mtry]
 #     else
 #         col_indcs = 1:p
 #     end
@@ -134,13 +134,13 @@ Variable name changes from original code
 
 
 
-function _split_mse_df{T<:Float64}(y::Vector{T}, X::DataFrame, nsubfeatures::Int)
+function _split_mse_df{T<:Float64}(y::Vector{T}, X::DataFrame, mtry::Int)
     n, p = size(X)
     best = NO_BEST
     best_val = -Inf
-    if nsubfeatures > 0
+    if mtry > 0
         r = randperm(p)
-        col_indcs = r[1:nsubfeatures]
+        col_indcs = r[1:mtry]
     else
         col_indcs = 1:p
     end
@@ -188,7 +188,7 @@ function find_na_cols(dat)
 end
 
 
-# function find_surrogates{T::BitArray}(left_node::T, y::Vector, X::Matrix, nsubfeatures::Int)
+# function find_surrogates{T::BitArray}(left_node::T, y::Vector, X::Matrix, mtry::Int)
 
 
 
@@ -213,7 +213,7 @@ end
 
 
 
-function build_tree_df{T <: Float64}(y::Vector{T}, X::DataFrame, maxlabels = 5, nsubfeatures = 0, maxdepth = -1, max_surrogates = 5)
+function build_tree_df{T <: Float64}(y::Vector{T}, X::DataFrame, maxlabels = 5, mtry = 0, maxdepth = -1, max_surrogates = 5)
     n = nrow(X)
     if maxdepth < -1
         error("Unexpected value for maxdepth: $(maxdepth) (expected: maxdepth >= 0, or maxdepth = -1 for infinite depth)")
@@ -222,7 +222,7 @@ function build_tree_df{T <: Float64}(y::Vector{T}, X::DataFrame, maxlabels = 5, 
         return Leaf(mean(y), y)
     end
 
-    S = _split_mse_df(y, X, nsubfeatures)               # get [complete data] optimal split point
+    S = _split_mse_df(y, X, mtry)               # get [complete data] optimal split point
 
     if S == NO_BEST
         return Leaf(mean(y), y)
@@ -257,24 +257,22 @@ function build_tree_df{T <: Float64}(y::Vector{T}, X::DataFrame, maxlabels = 5, 
     return Node(col_idx,
                 thresh,
                 surrogate_vars,
-                build_tree_df(y[split], X[split,:], maxlabels, nsubfeatures, max(maxdepth-1, -1)),
-                build_tree_df(y[!split], X[!split,:], maxlabels, nsubfeatures, max(maxdepth-1, -1)))
+                build_tree_df(y[split], X[split,:], maxlabels, mtry, max(maxdepth-1, -1)),
+                build_tree_df(y[!split], X[!split,:], maxlabels, mtry, max(maxdepth-1, -1)))
 end
 
 
-function build_forest_df{T <: Real}(y::Vector{T}, X::DataFrame, nsubfeatures, ntrees, maxlabels = 5, partialsampling = 0.7, maxdepth = -1; nthreads = 1, oob_measure = "rsq")
+function build_forest_df{T <: Real}(y::Vector{T}, X::DataFrame, mtry, ntrees, maxlabels = 5, maxdepth = -1; nthreads = 1, oob_measure = "rsq")
 
-    partialsampling = partialsampling > 1.0 ? 1.0 : partialsampling
     n = length(y)
-    n_subsamples = round(Int, partialsampling * n)
     tree_arr = Array{Node, 1}(ntrees)
 
     if nthreads ≥ 2
         yhat_mat = fill(-Inf, (n, ntrees))       # use to compute oob-score
         
         @threads for t in 1:ntrees
-            inds = rand(1:n, n_subsamples)
-            tree_arr[t] = build_tree_df(y[inds], X[inds, :], maxlabels, nsubfeatures, maxdepth)
+            inds = sample(1:n, n)
+            tree_arr[t] = build_tree_df(y[inds], X[inds, :], maxlabels, mtry, maxdepth)
             
             # get OOB indices to calculate OOB score
             oob_indcs = setdiff(collect(1:n), inds)
@@ -284,12 +282,12 @@ function build_forest_df{T <: Real}(y::Vector{T}, X::DataFrame, nsubfeatures, nt
         end
         oob_score = par_oob_score(yhat_mat, y, oob_measure)
     else
-        yhat_mat = zeros(n, 2)          # col 1 is numerator, col 2 is denominator
+        yhat_mat = zeros(n, 2)                  # col 1 is numerator, col 2 is denominator
         yhat_mat[:, 1] = fill(-Inf, n)
         
         for t in 1:ntrees
-            inds = rand(1:n, n_subsamples)
-            tree_arr[t] = build_tree_df(y[inds], X[inds, :], maxlabels, nsubfeatures, maxdepth)
+            inds = sample(1:n, sample)
+            tree_arr[t] = build_tree_df(y[inds], X[inds, :], maxlabels, mtry, maxdepth)
 
             # get OOB indices to calculate OOB score
             oob_indcs = setdiff(collect(1:n), inds)
@@ -306,6 +304,7 @@ function build_forest_df{T <: Real}(y::Vector{T}, X::DataFrame, nsubfeatures, nt
             yhat_mat[oob_indcs, 1] += yhat 
             yhat_mat[oob_indcs, 2] += 1 
         end
+
         if all(isfinite(yhat_mat[:, 1]))
             oob_score = R2(y, yhat_mat[:, 1] ./ yhat_mat[:, 2])
         else 

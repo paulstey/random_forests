@@ -13,7 +13,6 @@ wgt = repeat([1], inner = n);
 @profile _split_classifcation_error_loss(y, X, wgt, collect(1:p))
 
 
-include("EnsembleMethods.jl")
 # testing build_tree_df()
 n = 30
 p = 5

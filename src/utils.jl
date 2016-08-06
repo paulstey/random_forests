@@ -9,6 +9,25 @@ depth(leaf::Leaf) = 0
 depth(tree::Node) = 1 + max(depth(tree.left), depth(tree.right))
 
 
+# Functions for determining the predictors used in a tree
+
+function get_columns_indices!(tree, col_indcs)
+    if isa(tree, Leaf)
+        return nothing 
+    else 
+        push!(col_indcs, tree.col_idx)
+        columns_indices!(tree.left, col_indcs)
+        columns_indices!(tree.right, col_indcs)
+    end 
+end 
+
+# Given a tree, this function returns the indices of the 
+# columns used at each node. Note that surrogates are ignored.
+function column_indices(tree)
+    indcs = Array{Int}(0)
+    get_columns_indices!(tree, col_indcs)
+    return unique(indcs) 
+end 
 
 
 function add_missing(dat::DataFrame, pr)

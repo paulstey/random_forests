@@ -71,6 +71,8 @@ function apply_tree(tree::LeafOrNode, X::DataFrame)
 end
 
 
+# Functions for applying the fitted random forest
+
 function apply_forest(forest::Ensemble, X::Matrix)
     n = size(X, 1)
     y_hat = Array(Any, n)
@@ -97,7 +99,7 @@ function apply_forest(forest::Ensemble, x::Vector)
         votes[i] = apply_tree(forest.trees[i], x)
     end
 
-    if eltype(votes) <: Float64
+    if eltype(votes) <: AbstractFloat
         return mean(votes)
     else
         return majority_vote(votes)

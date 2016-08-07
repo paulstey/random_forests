@@ -222,7 +222,7 @@ function build_tree_df{T <: Float64}(y::Vector{T}, X::DataFrame, maxlabels = 5, 
         return Leaf(mean(y), y)
     end
 
-    S = _split_mse_df(y, X, mtry)               # get [complete data] optimal split point
+    S = _split_mse_df(y, X, mtry)                       # get [complete data] optimal split point
 
     if S == NO_BEST
         return Leaf(mean(y), y)
@@ -268,6 +268,67 @@ function build_forest_df{T <: Real}(y::Vector{T}, X::DataFrame, mtry, ntrees, ma
     tree_arr = Array{Node, 1}(ntrees)
 
     if nthreads ≥ 2
+        yhat_mat = fill(-Inf, (n, ntrees))              # use to compute oob-score
+        mse_inc_dicts = Array{Dict{Int, Float64}, 1}(ntrees)
+        
+        @threads for t in 1:ntrees
+            inds = sample(1:n, n)
+            tree_arr[t] = build_tree_df(y[inds], X[inds, :], maxlabels, mtry, maxdepth)
+            
+            # get OOB indices to calculate OOB score
+            oob_indcs = setdiff(collect(1:n), inds)
+            yhat, mse_inc = apply_tree(tree_arr[t], X[oob_indcs, :], y[oob_indcs])
+            
+            yhat_mat[oob_indcs, t] = yhat
+            mse_inc_dicts[t] = mse_inc              # dict with MSE increases for OOB permutation importance
+        end
+
+        oob_score = par_oob_score(yhat_mat, y, oob_measure)
+        mse_inc_dict = par_mse_inc(mse_inc_dicts)
+    else
+        yhat_mat = zeros(n, 2)                      # col 1 is numerator, col 2 is denominator
+        yhat_mat[:, 1] = fill(-Inf, n)
+        mse_inc_dict = Dict{Int, Float64}()
+        
+        for t in 1:ntrees
+            inds = sample(1:n, n)
+            tree_arr[t] = build_tree_df(y[inds], X[inds, :], maxlabels, mtry, maxdepth)
+
+            # get OOB indices to calculate OOB score
+            oob_indcs = setdiff(collect(1:n), inds)
+            yhat, mse_inc = apply_tree(tree_arr[t], X[oob_indcs, :], y[oob_indcs])
+            
+            if !all(isfinite(yhat_mat[oob_indcs, 1]))
+                for idx in oob_indcs
+                    if !isfinite(yhat_mat[idx, 1])
+                        yhat_mat[oob_indcs, 1] = 0.0 
+                    end 
+                end 
+            end            
+
+            yhat_mat[oob_indcs, 1] += yhat 
+            yhat_mat[oob_indcs, 2] += 1 
+            update_mse_inc!(mse_inc_dict, mse_inc)
+        end
+
+        if all(isfinite(yhat_mat[:, 1]))
+            oob_score = rsq(y, yhat_mat[:, 1] ./ yhat_mat[:, 2])
+        else 
+            warn("Not enough trees built to compute OOB score. Some rows were never out-of-bag")
+            return nothing
+        end  
+    end
+    return (Ensemble(tree_arr), oob_score, mse_inc_dict)
+end
+
+
+
+function build_forest_df_novarimp{T <: Real}(y::Vector{T}, X::DataFrame, mtry, ntrees, maxlabels = 5, maxdepth = -1; nthreads = 1, oob_measure = "rsq")
+
+    n = length(y)
+    tree_arr = Array{Node, 1}(ntrees)
+
+    if nthreads ≥ 2
         yhat_mat = fill(-Inf, (n, ntrees))       # use to compute oob-score
         
         @threads for t in 1:ntrees
@@ -286,7 +347,7 @@ function build_forest_df{T <: Real}(y::Vector{T}, X::DataFrame, mtry, ntrees, ma
         yhat_mat[:, 1] = fill(-Inf, n)
         
         for t in 1:ntrees
-            inds = sample(1:n, sample)
+            inds = sample(1:n, n)
             tree_arr[t] = build_tree_df(y[inds], X[inds, :], maxlabels, mtry, maxdepth)
 
             # get OOB indices to calculate OOB score
@@ -306,7 +367,7 @@ function build_forest_df{T <: Real}(y::Vector{T}, X::DataFrame, mtry, ntrees, ma
         end
 
         if all(isfinite(yhat_mat[:, 1]))
-            oob_score = R2(y, yhat_mat[:, 1] ./ yhat_mat[:, 2])
+            oob_score = rsq(y, yhat_mat[:, 1] ./ yhat_mat[:, 2])
         else 
             warn("Not enough trees built to compute OOB score. Some rows were never out-of-bag")
             return nothing
@@ -314,7 +375,6 @@ function build_forest_df{T <: Real}(y::Vector{T}, X::DataFrame, mtry, ntrees, ma
     end
     return (Ensemble(tree_arr), oob_score)
 end
-
 
 # This function is a helper used for getting oob-score for 
 # parallel version of random forest regression. The parallel case 
@@ -339,11 +399,11 @@ function par_oob_score(yhat_mat, y, measure = "rsq")
     if all(isfinite(yhat))
         yhat ./= num_preds 
     else 
-        warn("Not enough trees built to compute OOB score. Some rows were never out-of-bag")
+        warn("Not enough trees built to compute OOB score. Some rows never out-of-bag")
         return nothing
     end 
     if measure == "rsq"
-        oob_score = R2(y, yhat) 
+        oob_score = rsq(y, yhat) 
     elseif measure == "mse"
         oob_score = mean_squared_error(y, yhat) 
     end 
@@ -351,6 +411,19 @@ function par_oob_score(yhat_mat, y, measure = "rsq")
 end 
 
 
+function update_mse_inc!(aggregate_dict, tree_dict)
+    for k in keys(tree_dict)
+        aggregate_dict[k] = get(aggregate_dict, k, 0.0) + tree_dict[k]
+    end 
+end 
 
 
+function par_mse_inc(mse_inc_dicts)
+    out = Dict{Int, Float64}()
+    ntrees = length(mse_inc_dicts)
+    for i = 1:ntrees 
+        update_mse_inc!(out, mse_inc_dicts[i])
+    end 
+    return out 
+end 
 

@@ -21,7 +21,6 @@ function surrogate_splits(y_obs_split::Vector, X::DataFrame, row_indcs::Vector{I
     surr = Array{Tuple}(n_surr)
 
     for i = 1:n_surr
-        # println(y_obs_split)
         surr[i] = _split_classifcation_error_loss(y_obs_split, X, row_indcs, col_indcs)
         col_indcs = setdiff(col_indcs, surr[i][1])
     end

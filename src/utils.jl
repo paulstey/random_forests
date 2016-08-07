@@ -11,22 +11,22 @@ depth(tree::Node) = 1 + max(depth(tree.left), depth(tree.right))
 
 # Functions for determining the predictors used in a tree
 
-function get_columns_indices!(tree, col_indcs)
+function get_predictors_used!(tree, col_indcs)
     if isa(tree, Leaf)
         return nothing 
     else 
         push!(col_indcs, tree.col_idx)
-        columns_indices!(tree.left, col_indcs)
-        columns_indices!(tree.right, col_indcs)
+        get_predictors_used!(tree.left, col_indcs)
+        get_predictors_used!(tree.right, col_indcs)
     end 
 end 
 
 # Given a tree, this function returns the indices of the 
 # columns used at each node. Note that surrogates are ignored.
-function column_indices(tree)
-    indcs = Array{Int}(0)
-    get_columns_indices!(tree, col_indcs)
-    return unique(indcs) 
+function predictors_used(tree)
+    col_indcs = Array{Int}(0)
+    get_predictors_used!(tree, col_indcs)
+    return unique(col_indcs) 
 end 
 
 

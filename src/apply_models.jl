@@ -59,7 +59,7 @@ end
 function apply_tree(tree::LeafOrNode, X::DataFrame)
     n = size(X, 1)
     predictions = Array(Any, n)             # this should not be type Any
-    for i in 1:n
+    for i = 1:n
         # Careful here: conversion to DataArray does not drop dimension,
         # so X is a 1-row matrix; but this this works for now.
         predictions[i] = apply_tree(tree, DataArray(X[i, :])')
@@ -68,6 +68,42 @@ function apply_tree(tree::LeafOrNode, X::DataFrame)
         end 
     end
     return predictions
+end
+
+
+# This version is dispatched when OOB importance is being calculated
+function apply_tree(tree::LeafOrNode, X::DataFrame, y::Vector)
+    n = size(X, 1)
+    predictions = similar(y)             # this should not be type Any
+    for i = 1:n
+        # Careful here: conversion to DataArray does not drop dimension,
+        # so X is a 1-row matrix; but this this works for now.
+        predictions[i] = apply_tree(tree, DataArray(X[i, :])')
+        if predictions[i] == nothing 
+            error("Prediction for row $i == nothing")
+        end 
+    end
+
+    mse_inc_dict = Dict{Int, Float64}()
+    preds_used = predictors_used(tree)
+    mse_predictions = mean_squared_error(y, predictions)
+
+    for j in preds_used
+        X_perm = copy(X)                    # inefficient: find a better way!
+        X_perm[:, j] = shuffle(X_perm[:, j])
+        permute_predictions = similar(y)
+
+        for i = 1:n
+            # Careful here: conversion to DataArray does not drop dimension,
+            # so X is a 1-row matrix; but this this works for now.
+            permute_predictions[i] = apply_tree(tree, DataArray(X_perm[i, :])')
+            if permute_predictions[i] == nothing 
+                error("Prediction for row $i == nothing")
+            end 
+        end 
+        mse_inc_dict[j] = mean_squared_error(y, permute_predictions) - mse_predictions
+    end
+    return (predictions, mse_inc_dict)
 end
 
 

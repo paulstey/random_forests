@@ -73,7 +73,7 @@ function mean_squared_error(actual, predicted)
     return mean((actual - predicted).^2)
 end
 
-function R2(actual, predicted)
+function rsq(actual, predicted)
     @assert length(actual) == length(predicted)
     ss_residual = sum((actual - predicted).^2)
     ss_total = sum((actual .- mean(actual)).^2)

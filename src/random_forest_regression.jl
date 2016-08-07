@@ -214,7 +214,10 @@ end
 
 
 function build_tree_df{T <: Float64}(y::Vector{T}, X::DataFrame, maxlabels = 5, mtry = 0, maxdepth = -1, max_surrogates = 5)
-    n = nrow(X)
+    n, p = size(X)
+    if mtry == 0
+        mtry = p 
+    end 
     if maxdepth < -1
         error("Unexpected value for maxdepth: $(maxdepth) (expected: maxdepth >= 0, or maxdepth = -1 for infinite depth)")
     end
@@ -236,7 +239,7 @@ function build_tree_df{T <: Float64}(y::Vector{T}, X::DataFrame, maxlabels = 5, 
     end
 
     # if col_idx in cols_with_na
-    if col_idx in 1:ncol(X)                             # find surrogates even when no missing data
+    if col_idx in 1:p                             # find surrogates even when no missing data
         na_rows = isna(X[:, col_idx])
         split_with_na = Array{Any, 1}(n)                # vector of Bools with some NA values
 
@@ -244,7 +247,7 @@ function build_tree_df{T <: Float64}(y::Vector{T}, X::DataFrame, maxlabels = 5, 
             split_with_na[i] = isna(X[i, col_idx]) ? NA : X[i, col_idx] < thresh
         end
         row_indcs = collect(1:n)[!na_rows]
-        col_indcs = deleteat!(collect(1:ncol(X)), col_idx)
+        col_indcs = deleteat!(collect(1:p), col_idx)
 
         # Here we need a function that splits so as to optimize agreement
         # with the `split_with_na` result for each observed `row_indcs`.

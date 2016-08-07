@@ -74,7 +74,7 @@ end
 # This version is dispatched when OOB importance is being calculated
 function apply_tree(tree::LeafOrNode, X::DataFrame, y::Vector)
     n = size(X, 1)
-    predictions = similar(y)             # this should not be type Any
+    predictions = similar(y)            
     for i = 1:n
         # Careful here: conversion to DataArray does not drop dimension,
         # so X is a 1-row matrix; but this this works for now.
@@ -89,8 +89,9 @@ function apply_tree(tree::LeafOrNode, X::DataFrame, y::Vector)
     mse_predictions = mean_squared_error(y, predictions)
 
     for j in preds_used
-        X_perm = copy(X)                    # inefficient: find a better way!
-        X_perm[:, j] = shuffle(X_perm[:, j])
+        X_perm = copy(X)                        # inefficient: find a better way!
+        
+        X_perm[:, j] = shuffle(X_perm[:, j])    # some evidence this could be causing randomly occuring seg faults
         permute_predictions = similar(y)
 
         for i = 1:n

@@ -20,7 +20,7 @@ include("EnsembleMethods.jl")
 # build_tree_df(y, X_mis)
 
 # test build_tree_df() and apply_tree()
-n = 5000
+n = 500
 p = 10
 X = DataFrame(randn(n, p));
 β = [0.002, 0.001, 0.003, 0.001, 0.01, 0.03, 40.1, 3.8, 50.0, 112.5]
@@ -60,7 +60,7 @@ fm1 = build_tree_df(y, X_mis)
 
 
 
-n = 500
+n = 5000
 p = 10
 X = DataFrame(randn(n, p));
 β = [0.002, 0.001, 0.003, 0.001, 0.01, 0.03, 40.1, 3.8, 50.0, 112.5]
@@ -71,12 +71,16 @@ X_mis = add_missing(X, 0.30)
 
 @code_warntype _classifcation_error_loss(y)
 
-_best_mse_loss(y_ord, x_j, domain_j)
 @code_warntype _split_mse_df(y, X, 3)               # tons of type Any variables
 @code_warntype build_tree_df(y, X_mis)              # return type is Union{Leaf, Node}
 
 @time _split_mse_df2(y, X, 3)
 
+n = 1000
+x_j = randn(n)
+y = randn(n)
+domain = quantile(x_j, linspace(0.01, 0.99, 99))
+@code_warntype _best_mse_loss(y, x_j, domain)
 
 
 

@@ -19,14 +19,14 @@ Variable name changes from original code
   s2_r     -> sum_y2_right
 
 """
-function _best_mse_loss{T<:Float64, U<:Real}(y::Vector{T}, x::Vector{U}, domain)
+function _best_mse_loss{T<:Float64, U<:Real}(y::Vector{T}, x::DataArray{U, 1}, domain)
     best_val = -Inf
     best_thresh = 0.0
     n = length(y)
 
     sum_y_left = sum_y2_left = zero(T)            # scalar values of 0
 
-    sum_y = sum(y)::T                             # scalar sum of all y_i
+    sum_y = sum(y)                             # scalar sum of all y_i
     sum_y2 = zero(T);                             # scalar value of 0
 
     # get sum of squares
@@ -93,27 +93,33 @@ Variable name changes from original code
 """
 
 
+
+
 function _split_mse_df{T<:Float64}(y::Vector{T}, X::DataFrame, mtry::Int)
     n, p = size(X)
-    best = NO_BEST
+    best = (0, 0.0)
     best_val = -Inf
     if mtry > 0
         r = randperm(p)
         col_indcs = r[1:mtry]
     else
-        col_indcs = 1:p
+        col_indcs = collect(1:p)
     end
     for j in col_indcs
         keep_row = !isna(X[:, j])
-        x_obs = convert(Vector, X[keep_row, j])
-        if length(x_obs) == 0
+        
+        # x_obs = convert(Vector, X[keep_row, j])
+
+        if !any(keep_row)
             continue
         end
 
-        y_obs = y[keep_row]
-        ord = sortperm(x_obs)
-        x_j = similar(x_obs[ord])
-        y_ord = y_obs[ord]
+        # y_obs = y[keep_row]
+        # ord::Array{Int64, 1} = sortperm(x_obs)
+        # x_j = convert(Array{typeof(x_obs[1])}, x_obs[ord])
+        # y_ord = y_obs[ord]
+
+        x_j, y_ord = prepare_xy_obs(X[keep_row, j], y[keep_row])
 
         if n > 100
             if VERSION >= v"0.4.0-dev"
@@ -133,36 +139,12 @@ function _split_mse_df{T<:Float64}(y::Vector{T}, X::DataFrame, mtry::Int)
     return best
 end
 
-
-
-function _split_mse_df2{T<:Float64}(y::Vector{T}, X::DataFrame, mtry::Int)
-    n, p = size(X)
-    best = NO_BEST
-    best_val = -Inf
-    if mtry > 0
-        r = randperm(p)
-        col_indcs = r[1:mtry]
-    else
-        col_indcs = 1:p
-    end
-    for j in col_indcs
-        keep_row = !isna(X[:, j])
-        x_obs = convert(Vector, X[keep_row, j])
-        if length(x_obs) == 0
-            continue
-        end
-        y_obs = y[keep_row]
-
-        value, thresh = _best_mse_loss(y_obs, x_obs, x_obs)
-
-        if value > best_val
-            best_val = value
-            best = (j, thresh)
-        end
-    end
-    return best
-end
-
+function prepare_xy_obs{T}(x_obs::DataArray{T, 1}, y_obs)
+    ord = sortperm(x_obs)
+    x_j::DataArray{T, 1} = x_obs[ord]
+    y_ord = y_obs[ord]
+    return (x_j, y_ord)
+end 
 
 
 function find_na_cols(dat)
@@ -228,7 +210,7 @@ function build_tree_df{T <: Float64}(y::Vector{T}, X::DataFrame, maxlabels = 5, 
     end
 
     # if col_idx in cols_with_na
-    if col_idx in 1:p                                   # find surrogates even when no missing data
+    if col_idx in 1:p                             # find surrogates even when no missing data
         na_rows = isna(X[:, col_idx])
         split_with_na = Array{Any, 1}(n)                # vector of Bools with some NA values
 

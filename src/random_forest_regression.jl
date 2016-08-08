@@ -91,47 +91,6 @@ Variable name changes from original code
   inds       -> col_indcs
 
 """
-# function _split_mse{T<:Float64, U<:Real}(y::Vector{T}, X::Matrix{U}, mtry::Int)
-#     n, p = size(X)
-#     best = NO_BEST
-#     best_val = -Inf
-
-#     if mtry > 0
-#         r = randperm(p)
-#         col_indcs = r[1:mtry]
-#     else
-#         col_indcs = 1:p
-#     end
-
-#     for j in col_indcs
-#         # Sorting used to be performed only when n <= 100, but doing it
-#         # unconditionally improved fitting performance by 20%. It's a bit of a
-#         # puzzle. Either it improved type-stability, or perhaps branch
-#         # prediction is much better on a sorted sequence.
-#         ord = sortperm(X[:, j])
-#         x_j = X[ord, j]
-#         y_ord = y[ord]
-
-#         if n > 100
-#             if VERSION >= v"0.4.0-dev"
-#                 domain_j = quantile(x_j, linspace(0.01, 0.99, 99); sorted=true)
-#             else  # sorted=true isn't supported on StatsBase's Julia 0.3 version
-#                 domain_j = quantile(x_j, linspace(0.01, 0.99, 99))
-#             end
-#         else
-#             domain_j = x_j
-#         end
-#         value, thresh = _best_mse_loss(y_ord, x_j, domain_j)
-
-#         if value > best_val
-#             best_val = value
-#             best = (j, thresh)
-#         end
-#     end
-#     return best
-# end
-
-
 
 
 function _split_mse_df{T<:Float64}(y::Vector{T}, X::DataFrame, mtry::Int)
@@ -153,7 +112,7 @@ function _split_mse_df{T<:Float64}(y::Vector{T}, X::DataFrame, mtry::Int)
 
         y_obs = y[keep_row]
         ord = sortperm(x_obs)
-        x_j = convert(Array{typeof(x_obs[1])}, x_obs[ord])
+        x_j = similar(x_obs[ord])
         y_ord = y_obs[ord]
 
         if n > 100
@@ -166,6 +125,36 @@ function _split_mse_df{T<:Float64}(y::Vector{T}, X::DataFrame, mtry::Int)
             domain_j = x_j
         end
         value, thresh = _best_mse_loss(y_ord, x_j, domain_j)
+        if value > best_val
+            best_val = value
+            best = (j, thresh)
+        end
+    end
+    return best
+end
+
+
+
+function _split_mse_df2{T<:Float64}(y::Vector{T}, X::DataFrame, mtry::Int)
+    n, p = size(X)
+    best = NO_BEST
+    best_val = -Inf
+    if mtry > 0
+        r = randperm(p)
+        col_indcs = r[1:mtry]
+    else
+        col_indcs = 1:p
+    end
+    for j in col_indcs
+        keep_row = !isna(X[:, j])
+        x_obs = convert(Vector, X[keep_row, j])
+        if length(x_obs) == 0
+            continue
+        end
+        y_obs = y[keep_row]
+
+        value, thresh = _best_mse_loss(y_obs, x_obs, x_obs)
+
         if value > best_val
             best_val = value
             best = (j, thresh)
@@ -213,7 +202,7 @@ end
 
 
 
-function build_tree_df{T <: Float64}(y::Vector{T}, X::DataFrame, maxlabels = 5, mtry = 0, maxdepth = -1, max_surrogates = 5)
+function build_tree_df{T <: Float64}(y::Vector{T}, X::DataFrame, maxlabels = 5, mtry = 0, maxdepth = -1, n_surrogates = 5)
     n, p = size(X)
     if mtry == 0
         mtry = p 
@@ -233,13 +222,13 @@ function build_tree_df{T <: Float64}(y::Vector{T}, X::DataFrame, maxlabels = 5, 
 
     col_idx, thresh = S
 
-    if max_surrogates ≠ 0
+    if n_surrogates ≠ 0
         cols_with_na = find_na_cols(X)                  # needed for all recursive steps since rows of X change
-        surrogate_vars = Vector{Tuple{Int, Real}}(max_surrogates)
+        surrogate_vars = Vector{Tuple{Int, Real}}(n_surrogates)
     end
 
     # if col_idx in cols_with_na
-    if col_idx in 1:p                             # find surrogates even when no missing data
+    if col_idx in 1:p                                   # find surrogates even when no missing data
         na_rows = isna(X[:, col_idx])
         split_with_na = Array{Any, 1}(n)                # vector of Bools with some NA values
 
@@ -265,7 +254,7 @@ function build_tree_df{T <: Float64}(y::Vector{T}, X::DataFrame, maxlabels = 5, 
 end
 
 
-function build_forest_df{T <: Real}(y::Vector{T}, X::DataFrame, mtry, ntrees, maxlabels = 5, maxdepth = -1; nthreads = 1, oob_measure = "rsq")
+function build_forest_df{T <: Real}(y::Vector{T}, X::DataFrame, mtry, ntrees, maxlabels = 5, maxdepth = -1; nthreads = 1, n_surrogates = 5, oob_measure = "rsq")
 
     n = length(y)
     tree_arr = Array{Node, 1}(ntrees)
@@ -276,7 +265,7 @@ function build_forest_df{T <: Real}(y::Vector{T}, X::DataFrame, mtry, ntrees, ma
         
         @threads for t in 1:ntrees
             inds = sample(1:n, n)
-            tree_arr[t] = build_tree_df(y[inds], X[inds, :], maxlabels, mtry, maxdepth)
+            tree_arr[t] = build_tree_df(y[inds], X[inds, :], maxlabels, mtry, maxdepth, n_surrogates)
             
             # get OOB indices to calculate OOB score
             oob_indcs = setdiff(collect(1:n), inds)
@@ -295,7 +284,7 @@ function build_forest_df{T <: Real}(y::Vector{T}, X::DataFrame, mtry, ntrees, ma
         
         for t in 1:ntrees
             inds = sample(1:n, n)
-            tree_arr[t] = build_tree_df(y[inds], X[inds, :], maxlabels, mtry, maxdepth)
+            tree_arr[t] = build_tree_df(y[inds], X[inds, :], maxlabels, mtry, maxdepth, n_surrogates)
 
             # get OOB indices to calculate OOB score
             oob_indcs = setdiff(collect(1:n), inds)
@@ -315,7 +304,12 @@ function build_forest_df{T <: Real}(y::Vector{T}, X::DataFrame, mtry, ntrees, ma
         end
 
         if all(isfinite(yhat_mat[:, 1]))
-            oob_score = rsq(y, yhat_mat[:, 1] ./ yhat_mat[:, 2])
+            
+            if oob_measure == "rsq"
+                oob_score = rsq(y, yhat_mat[:, 1] ./ yhat_mat[:, 2])
+            elseif oob_measure == "mse"
+                oob_score = mean_squared_error(y, yhat_mat[:, 1] ./ yhat_mat[:, 2])
+            end 
         else 
             warn("Not enough trees built to compute OOB score. Some rows were never out-of-bag")
             return nothing
@@ -326,7 +320,7 @@ end
 
 
 
-function build_forest_df_novarimp{T <: Real}(y::Vector{T}, X::DataFrame, mtry, ntrees, maxlabels = 5, maxdepth = -1; nthreads = 1, oob_measure = "rsq")
+function build_forest_df_novarimp{T <: Real}(y::Vector{T}, X::DataFrame, mtry, ntrees, maxlabels = 5, maxdepth = -1; nthreads = 1, n_surrogates = 5, oob_measure = "rsq")
 
     n = length(y)
     tree_arr = Array{Node, 1}(ntrees)
@@ -336,7 +330,7 @@ function build_forest_df_novarimp{T <: Real}(y::Vector{T}, X::DataFrame, mtry, n
         
         @threads for t in 1:ntrees
             inds = sample(1:n, n)
-            tree_arr[t] = build_tree_df(y[inds], X[inds, :], maxlabels, mtry, maxdepth)
+            tree_arr[t] = build_tree_df(y[inds], X[inds, :], maxlabels, mtry, maxdepth, n_surrogates)
             
             # get OOB indices to calculate OOB score
             oob_indcs = setdiff(collect(1:n), inds)
@@ -351,7 +345,7 @@ function build_forest_df_novarimp{T <: Real}(y::Vector{T}, X::DataFrame, mtry, n
         
         for t in 1:ntrees
             inds = sample(1:n, n)
-            tree_arr[t] = build_tree_df(y[inds], X[inds, :], maxlabels, mtry, maxdepth)
+            tree_arr[t] = build_tree_df(y[inds], X[inds, :], maxlabels, mtry, maxdepth, n_surrogates)
 
             # get OOB indices to calculate OOB score
             oob_indcs = setdiff(collect(1:n), inds)
@@ -370,7 +364,12 @@ function build_forest_df_novarimp{T <: Real}(y::Vector{T}, X::DataFrame, mtry, n
         end
 
         if all(isfinite(yhat_mat[:, 1]))
-            oob_score = rsq(y, yhat_mat[:, 1] ./ yhat_mat[:, 2])
+            
+            if oob_measure == "rsq"
+                oob_score = rsq(y, yhat_mat[:, 1] ./ yhat_mat[:, 2])
+            elseif oob_measure == "mse"
+                oob_score = mean_squared_error(y, yhat_mat[:, 1] ./ yhat_mat[:, 2])
+            end 
         else 
             warn("Not enough trees built to compute OOB score. Some rows were never out-of-bag")
             return nothing

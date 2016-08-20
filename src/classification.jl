@@ -43,15 +43,14 @@ function _split_classifcation_error_loss(y::Vector, X::DataFrame, obs_row_indcs:
     y = y[obs_row_indcs]
     
     for j in column_indcs
-        keep_row = !isna(X[:, j])               
-        x_obs = convert(Vector, X[keep_row, j])
+        keep_row::BitArray{1} = !isna(X[:, j])               
+        x_obs = convert(Vector{Float64}, X[keep_row, j])
         y_obs = y[keep_row]
 
-        if length(unique(x_obs)) ≥ 100
+        domain_j = unique(x_obs)
+        if length(domain_j) ≥ 100
             x_obs = convert(Array{Float64, 1}, x_obs)          # can't be Array{Any,1} for quantile()
-            domain_j::Array{Float64, 1} = quantile(x_obs, linspace(0.01, 0.99, 99))
-        else
-            domain_j = unique(x_obs)
+            domain_j = quantile(x_obs, linspace(0.01, 0.99, 99))
         end
         if length(domain_j) > 1
             for thresh in domain_j[2:end]

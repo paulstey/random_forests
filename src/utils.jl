@@ -60,6 +60,24 @@ function mean_impute(v)
     res
 end
 
+function as_floats(X)
+    n, p = size(X)
+    out = copy(X)
+
+    for j = 1:p 
+        if eltype(X[:, j]) <: Integer 
+            out[:, j] = convert(DataArray{Float64, 1}, X[:, j])
+        end  
+    end 
+    return out 
+end 
+
+
+
+
+
+
+
 
 function print_tree(leaf::Leaf, depth=-1, indent=0)
     matches = find(leaf.values .== leaf.majority)

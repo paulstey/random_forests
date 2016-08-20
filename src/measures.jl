@@ -55,7 +55,7 @@ end
 # allows us to compute the loss function 5x faster
 function _classifcation_error_loss(y::Vector)
     loss = sum(y)
-    return -loss
+    return -loss        # tons of mem-alloc here 
 end
 
 #
@@ -69,12 +69,10 @@ end
 
 
 function mean_squared_error(actual, predicted)
-    @assert length(actual) == length(predicted)
     return mean((actual - predicted).^2)
 end
 
 function rsq(actual, predicted)
-    @assert length(actual) == length(predicted)
     ss_residual = sum((actual - predicted).^2)
     ss_total = sum((actual .- mean(actual)).^2)
     return 1.0 - ss_residual/ss_total

@@ -17,7 +17,7 @@ function _split_classifcation_error_loss(y::Vector, X::DataFrame, obs_row_indcs:
         end
 
         for thresh in domain_j[2:end]
-            cur_split = x_obs .< thresh
+            cur_split = x_obs .< thresh         # tons of mem-alloc here
 
             # ensure we have some observations in y
             if (length(y_obs[cur_split]) > 0) && (length(y_obs[!cur_split]) > 0)  
@@ -48,17 +48,21 @@ function _split_classifcation_error_loss(y::Vector, X::DataFrame, obs_row_indcs:
         y_obs = y[keep_row]
 
         if length(unique(x_obs)) ≥ 100
-            x_obs = convert(Array{Float64}, x_obs)          # can't be Array{Any,1} for quantile()
-            domain_j = quantile(x_obs, linspace(0.01, 0.99, 99))
+            x_obs = convert(Array{Float64, 1}, x_obs)          # can't be Array{Any,1} for quantile()
+            domain_j::Array{Float64, 1} = quantile(x_obs, linspace(0.01, 0.99, 99))
         else
-            domain_j = sort(unique(x_obs))
+            domain_j = unique(x_obs)
         end
         if length(domain_j) > 1
             for thresh in domain_j[2:end]
-                cur_split = x_obs .< thresh
+
+
+                cur_split = x_obs .< thresh         # tons of mem-alloc here
+
+
 
                 # ensure we have some observations in y
-                if (length(y_obs[cur_split]) > 0) && (length(y_obs[!cur_split]) > 0)       
+                if (any(cur_split)) && (!all(cur_split))       
                     value = _classifcation_error_loss(y_obs[cur_split]) + _classifcation_error_loss(y_obs[!cur_split])
                     if value > best_val
                         best_val = value
@@ -71,15 +75,15 @@ function _split_classifcation_error_loss(y::Vector, X::DataFrame, obs_row_indcs:
     return best
 end
 
-#
+
 # n = 1000
 # p = 20
 # X = DataFrame(randn(n, p));
 # y = rand([true, false], n);
 # wgt = ones(Int, n);
-#
-# @time _split_classifcation_error_loss(y, X, collect(1:n), collect(1:p), wgt)
-#
+
+# @code_warntype _split_classifcation_error_loss(y, X, collect(1:n), collect(1:p), wgt)
+
 #
 #
 #

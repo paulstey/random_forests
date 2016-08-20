@@ -8,7 +8,7 @@ function surrogate_splits(y_obs_split::Vector, X::DataFrame, col_indcs::Vector{I
 
     for i = 1:n_surr
         surr[i] = _split_classifcation_error_loss(y_obs_split, X, col_indcs, weights)
-        col_indcs = setdiff(col_indcs, surr[i][1])
+        col_indcs = setdiff(col_indcs, surr[i][1])          # considerable mem-alloc here
     end
     return surr
 end

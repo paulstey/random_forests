@@ -1,6 +1,7 @@
 include("EnsembleMethods.jl")
 
-dset = readtable("../data/concrete_data.csv")
+d_raw = readtable("../data/concrete_data.csv")
+dset = as_floats(d_raw)
 
 X = dset[:, 1:8]
 y = convert(Array, dset[:, 9])
@@ -9,6 +10,15 @@ y = convert(Array, dset[:, 9])
 Profile.clear_malloc_data() 
 @time fm1 = build_forest_df(y, X, 3, 50; nthreads = 1, n_surrogates = 0);
 
+
+
+n = 1000
+p = 20
+X = DataFrame(randn(n, p));
+y = rand([true, false], n);
+wgt = ones(Int, n);
+
+@code_warntype _split_classifcation_error_loss(y, X, collect(1:n), collect(1:p), wgt)
 
 
 

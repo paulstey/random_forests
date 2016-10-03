@@ -1,1 +1,1 @@
-# random_forests
+# EnsembleMethods
